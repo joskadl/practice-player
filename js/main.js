@@ -29,6 +29,9 @@ import {
 } from "./local-store.js";
 import { pullRemote, pushRemote, syncConfigured } from "./sync-remote.js";
 import { ProjectSession } from "./project-session.js";
+import { initI18n, t, onLangChange, applyDomI18n } from "./i18n.js";
+
+initI18n();
 
 const EYE_ICON =
   '<svg class="voice-vis-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M12 5c-5 0-9.3 3.1-11 7 1.7 3.9 6 7 11 7s9.3-3.1 11-7c-1.7-3.9-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg>';
@@ -70,13 +73,12 @@ const els = {
   addChordBtn: document.getElementById("addChordBtn"),
   addNoteBtn: document.getElementById("addNoteBtn"),
   scoreHeading: document.getElementById("scoreHeading"),
-  scoreHint: document.getElementById("scoreHint"),
   accompRow: document.getElementById("accompRow"),
   accompPercent: document.getElementById("accompPercent"),
   accompLabel: document.getElementById("accompLabel"),
   tuningRow: document.getElementById("tuningRow"),
   tuningToggle: document.getElementById("tuningToggle"),
-  tuningHint: document.getElementById("tuningHint"),
+  tuningToggleLabel: document.getElementById("tuningToggleLabel"),
   tuningModeLabel: document.getElementById("tuningModeLabel"),
   installBtn: document.getElementById("installBtn"),
   appVersion: document.getElementById("appVersion"),
@@ -217,17 +219,22 @@ async function updateSyncUi() {
   if (els.syncPullBtn) els.syncPullBtn.disabled = !active || !remoteOk;
   if (els.syncPushBtn) els.syncPushBtn.disabled = !active || !remoteOk || !session.needsPush();
   if (els.syncStatus) {
-    if (!project) {
-      els.syncStatus.textContent = "Load a MusicXML score to enable shared notes and sync.";
-    } else if (!project.musicXml) {
-      els.syncStatus.textContent =
-        "Shared sync needs MusicXML (MIDI-only files stay local on this device).";
-    } else if (!session.pack) {
-      els.syncStatus.textContent = "Preparing shared project…";
+    if (!project?.musicXml || !session.pack) {
+      els.syncStatus.hidden = true;
+      els.syncStatus.textContent = "";
+      if (els.syncPanel) {
+        els.syncPanel.title = !project
+          ? t("syncStatusLoad")
+          : !project.musicXml
+            ? t("syncStatusLoad")
+            : "";
+      }
     } else {
-      const pending = session.needsPush() ? " · local changes to push" : " · in sync";
+      els.syncStatus.hidden = false;
+      const pending = session.needsPush() ? " · …" : "";
       const net = navigator.onLine ? "online" : "offline";
       els.syncStatus.textContent = `${session.pack.title || "Project"} · r${session.pack.rev} · ${net}${pending}`;
+      if (els.syncPanel) els.syncPanel.title = "";
     }
   }
 }
@@ -238,7 +245,7 @@ function renderNotes() {
   const notes = session.pack?.notes || [];
   if (!notes.length) {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="hint">No rehearsal notes yet.</span>`;
+    li.innerHTML = `<span class="hint">${t("noRehearsalNotes")}</span>`;
     els.notesList.appendChild(li);
     return;
   }
@@ -254,7 +261,7 @@ function renderNotes() {
     const del = document.createElement("button");
     del.type = "button";
     del.className = "secondary";
-    del.textContent = "Delete";
+    del.textContent = t("delete");
     del.addEventListener("click", () => {
       void session
         .commit(
@@ -597,12 +604,9 @@ function updateScoreViewUi() {
   if (els.sheetAnnotBar) els.sheetAnnotBar.hidden = !showSheet;
   els.viewRollBtn.setAttribute("aria-pressed", showSheet ? "false" : "true");
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
-  els.scoreHeading.textContent = showSheet ? "Sheet music" : "Piano roll";
-  els.scoreHint.textContent = showSheet
-    ? "Click a note to seek. + Chord / + Note opens text at the cursor. Toggle Staves · Lyrics · Chords · Notes."
-    : hasSheet
-      ? "Click the timeline to seek. Switch to Sheet music for the score. Mute/solo colours apply in both views."
-      : "Click the timeline to seek. Arrow keys skip onsets. Load MusicXML for sheet music.";
+  els.scoreHeading.textContent = showSheet ? t("sheetMusic") : t(hasSheet ? "pianoRoll" : "score");
+  const scorePanel = els.pianoRoll?.closest(".score-panel");
+  if (scorePanel) scorePanel.title = t("scoreTip");
   updateSheetToolbar();
   if (showSheet) syncAnnotBar(sheet.getLayers?.());
 
@@ -631,28 +635,24 @@ function updateTuningUi() {
   els.tuningRow.hidden = false;
   const canJi = project.hasPitchBends;
   els.tuningToggle.disabled = !canJi;
+  const tipEl = els.tuningToggleLabel || els.tuningToggle;
   if (!canJi) {
     jiEnabled = false;
     els.tuningToggle.checked = false;
-    if (els.tuningModeLabel) els.tuningModeLabel.textContent = "Just Intonation";
-    els.tuningHint.textContent =
-      "JustPlay markers found, but no usable tuning map (empty markers / bypass only).";
+    if (els.tuningModeLabel) els.tuningModeLabel.textContent = t("tuningJi");
+    if (tipEl) tipEl.title = t("tuningTipEmpty");
     transport.setApplyPitchBends(false);
     return;
   }
   els.tuningToggle.checked = jiEnabled;
   if (els.tuningModeLabel) {
-    els.tuningModeLabel.textContent = jiEnabled ? "Just Intonation" : "Standard tuning";
+    els.tuningModeLabel.textContent = jiEnabled ? t("tuningJi") : t("tuningStandard");
   }
-  const sourceHint =
-    project.pitchBendSource === "markers"
-      ? "from JustPlay markers"
-      : project.pitchBendSource === "file"
-        ? "from file pitch bends"
-        : "";
-  els.tuningHint.textContent = jiEnabled
-    ? `Just Intonation on — applying pitch bends ${sourceHint} (range ±${project.pitchBendRange} semitones).`
-    : "Standard tuning — pitch bends centred (12-TET).";
+  if (tipEl) {
+    tipEl.title = jiEnabled
+      ? t("tuningTipJi", { range: project.pitchBendRange })
+      : t("tuningTipStandard");
+  }
   transport.setApplyPitchBends(jiEnabled);
 }
 
@@ -677,7 +677,7 @@ function renderVoices() {
     const mute = document.createElement("button");
     mute.type = "button";
     mute.className = "secondary";
-    mute.textContent = muted.has(voice.id) ? "Unmute" : "Mute";
+    mute.textContent = muted.has(voice.id) ? t("unmute") : t("mute");
     mute.addEventListener("click", () => {
       if (muted.has(voice.id)) muted.delete(voice.id);
       else muted.add(voice.id);
@@ -687,7 +687,7 @@ function renderVoices() {
     const soloBtn = document.createElement("button");
     soloBtn.type = "button";
     soloBtn.className = "secondary";
-    soloBtn.textContent = solo.has(voice.id) ? "Unsolo" : "Solo";
+    soloBtn.textContent = solo.has(voice.id) ? t("unsolo") : t("solo");
     soloBtn.addEventListener("click", () => {
       if (solo.has(voice.id)) solo.delete(voice.id);
       else solo.add(voice.id);
@@ -752,7 +752,7 @@ function renderVoices() {
     label.type = "button";
     label.className = "voice-name-label";
     label.textContent = voice.name;
-    label.title = "Click to rename";
+    label.title = t("renameVoice");
     label.addEventListener("click", () => beginVoiceNameEdit(voice, label, name));
 
     name.append(swatch, picker, label);
@@ -871,7 +871,7 @@ async function applyProject(parsed, fileName, opts = {}) {
   } else {
     sheet.clear();
     els.sheetMusic.innerHTML =
-      '<p class="hint sheet-placeholder">Load a MusicXML file to see sheet music here.</p>';
+      '<p class="hint sheet-placeholder">' + t("sheetPlaceholder") + "</p>";
     scoreView = "roll";
   }
 
@@ -936,7 +936,7 @@ async function loadFile(file) {
     roll.setProject(null);
     sheet.clear();
     els.sheetMusic.innerHTML =
-      '<p class="hint sheet-placeholder">Load a MusicXML file to see sheet music here.</p>';
+      '<p class="hint sheet-placeholder">' + t("sheetPlaceholder") + "</p>";
     setLoadedUi(false);
     updateTuningUi();
     renderVoices();
@@ -1306,6 +1306,18 @@ if ("serviceWorker" in navigator) {
 }
 
 if (els.appVersion) els.appVersion.textContent = APP_VERSION_LABEL;
+
+if (!project && els.fileName) els.fileName.textContent = t("noFile");
+
+onLangChange(() => {
+  applyDomI18n();
+  if (!project && els.fileName) els.fileName.textContent = t("noFile");
+  updateTuningUi();
+  updateScoreViewUi();
+  renderVoices();
+  renderNotes();
+  void updateSyncUi();
+});
 
 void loadSyncSettings().then((s) => {
   syncSettings = s;

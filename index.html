@@ -12,60 +12,57 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <button type="button" id="langToggle" class="lang-toggle" aria-pressed="true" data-i18n-title="langToggleTip">EN</button>
+
   <main class="app">
     <header class="header">
       <div class="header-row">
-        <h1>MIDI Practice Player</h1>
-        <button type="button" id="installBtn" class="secondary install-btn" hidden title="Install for offline use">
-          Install for offline
+        <h1 data-i18n="title">MIDI Practice Player</h1>
+        <button type="button" id="installBtn" class="secondary install-btn" hidden data-i18n="install" data-i18n-title="installTip">
+          Install
         </button>
       </div>
-      <p class="offline-hint">
-        Open once online, then use <strong>Install for offline</strong> (or your browser’s Add to Home Screen) so the app and soundfont work without internet.
-      </p>
     </header>
 
     <section class="panel load-panel">
-      <label class="file-btn">
-        Open file
+      <label class="file-btn" data-i18n-title="openFile">
+        <span data-i18n="openFile">Open file</span>
         <input id="fileInput" type="file" accept=".mid,.midi,.musicxml,.xml,audio/midi,application/vnd.recordare.musicxml+xml,application/xml,text/xml" hidden />
       </label>
       <span id="fileName" class="file-name">No file loaded</span>
       <label class="inline">
-        Sound
+        <span data-i18n="sound">Sound</span>
         <select id="instrumentSelect">
-          <option value="52" selected>Choir Aahs</option>
-          <option value="53">Voice Oohs</option>
-          <option value="0">Acoustic Piano</option>
-          <option value="48">Strings</option>
-          <option value="40">Violin</option>
-          <option value="42">Cello</option>
-          <option value="73">Flute</option>
+          <option value="52" selected data-i18n="choirAahs">Choir Aahs</option>
+          <option value="53" data-i18n="voiceOohs">Voice Oohs</option>
+          <option value="0" data-i18n="acousticPiano">Acoustic Piano</option>
+          <option value="48" data-i18n="strings">Strings</option>
+          <option value="40" data-i18n="violin">Violin</option>
+          <option value="42" data-i18n="cello">Cello</option>
+          <option value="73" data-i18n="flute">Flute</option>
         </select>
       </label>
       <span id="status" class="status" aria-live="polite"></span>
     </section>
 
     <section id="tuningRow" class="panel tuning-panel" hidden>
-      <label class="toggle">
+      <label class="toggle" id="tuningToggleLabel" data-i18n-title="tuningTipStandard">
         <input id="tuningToggle" type="checkbox" />
         <span class="toggle-ui" aria-hidden="true"></span>
         <span class="toggle-label">
-          <strong id="tuningModeLabel">Just Intonation</strong>
-          <span class="toggle-sub">vs Standard (12-TET)</span>
+          <strong id="tuningModeLabel" data-i18n="tuningJi">Just Intonation</strong>
         </span>
       </label>
-      <p id="tuningHint" class="hint tight"></p>
     </section>
 
     <section class="panel transport-panel">
       <div class="transport-btns">
-        <button type="button" id="playBtn" disabled>Play</button>
-        <button type="button" id="pauseBtn" disabled>Pause</button>
-        <button type="button" id="stopBtn" disabled>Stop</button>
+        <button type="button" id="playBtn" disabled data-i18n="play">Play</button>
+        <button type="button" id="pauseBtn" disabled data-i18n="pause">Pause</button>
+        <button type="button" id="stopBtn" disabled data-i18n="stop">Stop</button>
       </div>
       <label class="inline">
-        Tempo
+        <span data-i18n="tempo">Tempo</span>
         <input id="tempoPercent" type="range" min="50" max="150" value="100" disabled />
         <span id="tempoLabel">100%</span>
       </label>
@@ -76,21 +73,21 @@
       </div>
     </section>
 
-    <section class="panel score-panel">
+    <section class="panel score-panel" data-i18n-title="scoreTip">
       <div class="voices-head">
-        <h2 id="scoreHeading">Score</h2>
-        <div class="view-toggle" role="group" aria-label="Score view">
-          <button type="button" id="viewRollBtn" class="secondary view-btn" aria-pressed="true" disabled>Piano roll</button>
-          <button type="button" id="viewSheetBtn" class="secondary view-btn" aria-pressed="false" disabled>Sheet music</button>
+        <h2 id="scoreHeading" data-i18n="score">Score</h2>
+        <div class="view-toggle" role="group" data-i18n-aria="scoreView">
+          <button type="button" id="viewRollBtn" class="secondary view-btn" aria-pressed="true" disabled data-i18n="pianoRoll">Piano roll</button>
+          <button type="button" id="viewSheetBtn" class="secondary view-btn" aria-pressed="false" disabled data-i18n="sheetMusic">Sheet music</button>
         </div>
         <div id="sheetZoomControls" class="sheet-zoom" hidden>
-          <button type="button" id="sheetZoomOutBtn" class="secondary" title="Zoom out" aria-label="Zoom out">−</button>
+          <button type="button" id="sheetZoomOutBtn" class="secondary" data-i18n-title="zoomOut" data-i18n-aria="zoomOut">−</button>
           <span id="sheetZoomLabel" class="sheet-zoom-label">55%</span>
-          <button type="button" id="sheetZoomInBtn" class="secondary" title="Zoom in" aria-label="Zoom in">+</button>
-          <button type="button" id="sheetPdfBtn" class="secondary sheet-pdf-btn" title="Export current view as black-and-white PDF" aria-label="Export PDF">
+          <button type="button" id="sheetZoomInBtn" class="secondary" data-i18n-title="zoomIn" data-i18n-aria="zoomIn">+</button>
+          <button type="button" id="sheetPdfBtn" class="secondary sheet-pdf-btn" data-i18n-title="exportPdfTip" data-i18n-aria="exportPdf">
             PDF
           </button>
-          <button type="button" id="sheetSaveBtn" class="sheet-save-btn" title="Save / export MusicXML" hidden aria-label="Save score">
+          <button type="button" id="sheetSaveBtn" class="sheet-save-btn" hidden data-i18n-title="saveScoreTip" data-i18n-aria="saveScore">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
               <path fill="currentColor" d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/>
             </svg>
@@ -98,18 +95,17 @@
         </div>
       </div>
       <div id="sheetAnnotBar" class="sheet-annot-bar" hidden>
-        <div class="annot-toggles" role="group" aria-label="Score layers">
-          <button type="button" id="layerStavesBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide staves and notation">Staves</button>
-          <button type="button" id="layerLyricsBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide lyrics">Lyrics</button>
-          <button type="button" id="layerChordsBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide chord symbols">Chords</button>
-          <button type="button" id="layerNotesBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide performance notes">Notes</button>
+        <div class="annot-toggles" role="group" data-i18n-aria="layers">
+          <button type="button" id="layerStavesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="staves" data-i18n-title="stavesTip">Staves</button>
+          <button type="button" id="layerLyricsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="lyrics" data-i18n-title="lyricsTip">Lyrics</button>
+          <button type="button" id="layerChordsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="chords" data-i18n-title="chordsTip">Chords</button>
+          <button type="button" id="layerNotesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="notesLayer" data-i18n-title="notesLayerTip">Notes</button>
         </div>
-        <div class="annot-add" role="group" aria-label="Add annotations">
-          <button type="button" id="addChordBtn" class="secondary" title="Add a chord symbol at the playhead cursor">+ Chord</button>
-          <button type="button" id="addNoteBtn" class="secondary" title="Add a performance note at the playhead cursor">+ Note</button>
+        <div class="annot-add" role="group" data-i18n-aria="addAnnotations">
+          <button type="button" id="addChordBtn" class="secondary" data-i18n="addChord" data-i18n-title="addChordTip">+ Chord</button>
+          <button type="button" id="addNoteBtn" class="secondary" data-i18n="addNote" data-i18n-title="addNoteTip">+ Note</button>
         </div>
       </div>
-      <p id="scoreHint" class="hint tight score-hint">Click the timeline to seek. Arrow keys skip onsets. Mute/solo colours apply in both views.</p>
       <canvas
         id="pianoRoll"
         class="piano-roll"
@@ -117,80 +113,79 @@
         height="220"
         tabindex="0"
         role="slider"
-        aria-label="MIDI piano roll timeline — click to seek"
+        data-i18n-aria="rollAria"
       ></canvas>
       <div id="sheetMusic" class="sheet-music" hidden>
-        <p class="hint sheet-placeholder">Load a MusicXML file to see sheet music here.</p>
+        <p class="hint sheet-placeholder" data-i18n="sheetPlaceholder">Load a MusicXML file to see sheet music here.</p>
       </div>
     </section>
 
     <section class="panel">
       <div class="voices-head">
-        <h2>Voices</h2>
+        <h2 data-i18n="voices">Voices</h2>
         <div class="voice-actions">
-          <button type="button" id="muteAllBtn" disabled>Mute all</button>
-          <button type="button" id="unmuteAllBtn" disabled>Unmute all</button>
+          <button type="button" id="muteAllBtn" disabled data-i18n="muteAll">Mute all</button>
+          <button type="button" id="unmuteAllBtn" disabled data-i18n="unmuteAll">Unmute all</button>
         </div>
       </div>
       <label id="accompRow" class="inline accomp-row" hidden>
-        Other voices
+        <span data-i18n="otherVoices">Other voices</span>
         <input id="accompPercent" type="range" min="0" max="100" value="25" disabled />
         <span id="accompLabel">25%</span>
       </label>
       <ul id="voiceList" class="voice-list"></ul>
-      <p id="emptyVoices" class="hint">Open a MIDI or MusicXML file to see voices here.</p>
+      <p id="emptyVoices" class="hint" data-i18n="emptyVoices">Open a MIDI or MusicXML file to see voices here.</p>
     </section>
 
     <section id="syncPanel" class="panel sync-panel" hidden>
       <div class="voices-head">
-        <h2>Shared practice</h2>
+        <h2 data-i18n="sharedPractice">Shared practice</h2>
         <div class="voice-actions">
-          <button type="button" id="syncUndoBtn" class="secondary" disabled title="Undo last shared edit">Undo</button>
-          <button type="button" id="syncPullBtn" class="secondary" disabled>Pull</button>
-          <button type="button" id="syncPushBtn" disabled>Push</button>
+          <button type="button" id="syncUndoBtn" class="secondary" disabled data-i18n="undo" data-i18n-title="undoTip">Undo</button>
+          <button type="button" id="syncPullBtn" class="secondary" disabled data-i18n="pull">Pull</button>
+          <button type="button" id="syncPushBtn" disabled data-i18n="push">Push</button>
         </div>
       </div>
-      <p id="syncStatus" class="hint tight sync-status">Load a MusicXML score to enable shared notes and sync.</p>
+      <p id="syncStatus" class="hint tight sync-status" hidden></p>
       <div class="sync-actions">
-        <button type="button" id="syncExportBtn" class="secondary" disabled>Export pack</button>
+        <button type="button" id="syncExportBtn" class="secondary" disabled data-i18n="exportPack">Export pack</button>
         <label class="file-btn secondary-file">
-          Import pack
+          <span data-i18n="importPack">Import pack</span>
           <input id="syncImportInput" type="file" accept=".json,application/json" hidden />
         </label>
-        <button type="button" id="syncSettingsToggle" class="secondary">Sync settings</button>
+        <button type="button" id="syncSettingsToggle" class="secondary" data-i18n="syncSettings" data-i18n-title="syncSettingsTip">Sync settings</button>
       </div>
       <div id="syncSettings" class="sync-settings" hidden>
         <label class="sheet-edit-field">
-          Your name (for history)
+          <span data-i18n="yourName">Your name (for history)</span>
           <input id="syncAuthorInput" type="text" autocomplete="nickname" placeholder="e.g. Joska" />
         </label>
-        <p class="hint tight">Preferred: GitHub repo (each Push creates a commit = history). Token stays on this device only.</p>
         <div class="sync-settings-grid">
-          <label class="sheet-edit-field">Owner<input id="ghOwner" type="text" placeholder="username" autocomplete="off" /></label>
-          <label class="sheet-edit-field">Repo<input id="ghRepo" type="text" placeholder="midi-practice-player" autocomplete="off" /></label>
-          <label class="sheet-edit-field">Path<input id="ghPath" type="text" placeholder="shared/" autocomplete="off" /></label>
-          <label class="sheet-edit-field">Branch<input id="ghBranch" type="text" placeholder="main" autocomplete="off" /></label>
+          <label class="sheet-edit-field"><span data-i18n="owner">Owner</span><input id="ghOwner" type="text" placeholder="username" autocomplete="off" /></label>
+          <label class="sheet-edit-field"><span data-i18n="repo">Repo</span><input id="ghRepo" type="text" placeholder="midi-practice-player" autocomplete="off" /></label>
+          <label class="sheet-edit-field"><span data-i18n="path">Path</span><input id="ghPath" type="text" placeholder="shared/" autocomplete="off" /></label>
+          <label class="sheet-edit-field"><span data-i18n="branch">Branch</span><input id="ghBranch" type="text" placeholder="main" autocomplete="off" /></label>
         </div>
         <label class="sheet-edit-field">
-          GitHub token (Contents read/write)
-          <input id="ghToken" type="password" autocomplete="off" placeholder="ghp_… (optional for public pull)" />
+          <span data-i18n="ghToken">GitHub token (Contents read/write)</span>
+          <input id="ghToken" type="password" autocomplete="off" placeholder="ghp_…" />
         </label>
         <label class="sheet-edit-field">
-          Or generic remote JSON URL (GET pull / PUT push)
+          <span data-i18n="remoteUrl">Or generic remote JSON URL (GET pull / PUT push)</span>
           <input id="remoteUrl" type="url" placeholder="https://…" autocomplete="off" />
         </label>
-        <button type="button" id="syncSettingsSave" class="secondary">Save settings</button>
+        <button type="button" id="syncSettingsSave" class="secondary" data-i18n="saveSettings">Save settings</button>
       </div>
       <div class="notes-block">
-        <h3 class="notes-heading">Rehearsal notes</h3>
+        <h3 class="notes-heading" data-i18n="rehearsalNotes">Rehearsal notes</h3>
         <ul id="notesList" class="notes-list"></ul>
         <div class="notes-add">
-          <input id="noteInput" type="text" placeholder="Add a shared note…" disabled />
-          <button type="button" id="noteAddBtn" class="secondary" disabled>Add</button>
+          <input id="noteInput" type="text" data-i18n-placeholder="addSharedNote" placeholder="Add a shared note…" disabled />
+          <button type="button" id="noteAddBtn" class="secondary" disabled data-i18n="add">Add</button>
         </div>
       </div>
       <details id="historyDetails" class="history-details">
-        <summary>Edit history</summary>
+        <summary data-i18n="editHistory">Edit history</summary>
         <ol id="historyList" class="history-list"></ol>
       </details>
     </section>

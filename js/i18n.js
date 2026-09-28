@@ -1,0 +1,274 @@
+/**
+ * EN / NL UI strings for the MIDI Practice Player.
+ * Visible chrome stays short; longer help lives in title / data-tip tooltips.
+ */
+
+const STRINGS = {
+  en: {
+    title: "MIDI Practice Player",
+    install: "Install",
+    installTip: "Install for offline use (or Add to Home Screen)",
+    openFile: "Open file",
+    noFile: "No file loaded",
+    sound: "Sound",
+    choirAahs: "Choir Aahs",
+    voiceOohs: "Voice Oohs",
+    acousticPiano: "Acoustic Piano",
+    strings: "Strings",
+    violin: "Violin",
+    cello: "Cello",
+    flute: "Flute",
+    tuningJi: "Just Intonation",
+    tuningStandard: "Standard",
+    tuningTipJi: "Just Intonation on — pitch bends from JustPlay markers or the file (±{range} semitones).",
+    tuningTipStandard: "Standard tuning — pitch bends centred (12-TET).",
+    tuningTipEmpty: "JustPlay markers found, but no usable tuning map.",
+    play: "Play",
+    pause: "Pause",
+    stop: "Stop",
+    tempo: "Tempo",
+    score: "Score",
+    pianoRoll: "Piano roll",
+    sheetMusic: "Sheet music",
+    scoreView: "Score view",
+    zoomOut: "Zoom out",
+    zoomIn: "Zoom in",
+    exportPdf: "Export PDF",
+    exportPdfTip: "Export current view as black-and-white PDF",
+    saveScore: "Save score",
+    saveScoreTip: "Save / export MusicXML",
+    layers: "Score layers",
+    staves: "Staves",
+    lyrics: "Lyrics",
+    chords: "Chords",
+    notesLayer: "Notes",
+    stavesTip: "Show or hide staves and notation",
+    lyricsTip: "Show or hide lyrics",
+    chordsTip: "Show or hide chord symbols",
+    notesLayerTip: "Show or hide performance notes",
+    addAnnotations: "Add annotations",
+    addChord: "+ Chord",
+    addNote: "+ Note",
+    addChordTip: "Add a chord symbol at the playhead",
+    addNoteTip: "Add a performance note at the playhead",
+    scoreTip: "Click the timeline to seek. Arrow keys skip onsets. Mute/solo colours apply in both views.",
+    rollAria: "MIDI piano roll timeline — click to seek",
+    sheetPlaceholder: "Load a MusicXML file to see sheet music here.",
+    voices: "Voices",
+    muteAll: "Mute all",
+    unmuteAll: "Unmute all",
+    otherVoices: "Other voices",
+    emptyVoices: "Open a MIDI or MusicXML file to see voices here.",
+    mute: "Mute",
+    unmute: "Unmute",
+    solo: "Solo",
+    unsolo: "Unsolo",
+    renameVoice: "Click to rename",
+    sharedPractice: "Shared practice",
+    undo: "Undo",
+    undoTip: "Undo last shared edit",
+    pull: "Pull",
+    push: "Push",
+    syncStatusLoad: "Load a MusicXML score to enable shared notes and sync.",
+    exportPack: "Export pack",
+    importPack: "Import pack",
+    syncSettings: "Sync settings",
+    yourName: "Your name (for history)",
+    syncSettingsTip: "Preferred: GitHub repo (each Push creates a commit). Token stays on this device only.",
+    owner: "Owner",
+    repo: "Repo",
+    path: "Path",
+    branch: "Branch",
+    ghToken: "GitHub token (Contents read/write)",
+    remoteUrl: "Or generic remote JSON URL (GET pull / PUT push)",
+    saveSettings: "Save settings",
+    rehearsalNotes: "Rehearsal notes",
+    addSharedNote: "Add a shared note…",
+    add: "Add",
+    delete: "Delete",
+    editHistory: "Edit history",
+    noRehearsalNotes: "No rehearsal notes yet.",
+    langToggleTip: "Switch language / Wissel taal",
+  },
+  nl: {
+    title: "MIDI Oefenspeler",
+    install: "Installeren",
+    installTip: "Installeer voor offline gebruik (of Zet op beginscherm)",
+    openFile: "Bestand openen",
+    noFile: "Geen bestand geladen",
+    sound: "Klank",
+    choirAahs: "Koor Aahs",
+    voiceOohs: "Stem Oohs",
+    acousticPiano: "Akoestische piano",
+    strings: "Strijkers",
+    violin: "Viool",
+    cello: "Cello",
+    flute: "Fluit",
+    tuningJi: "Pure stemming",
+    tuningStandard: "Standaard",
+    tuningTipJi: "Pure stemming aan — pitch bends uit JustPlay-markers of het bestand (±{range} half tonen).",
+    tuningTipStandard: "Standaard stemming — pitch bends gecentreerd (12-TET).",
+    tuningTipEmpty: "JustPlay-markers gevonden, maar geen bruikbare stemming.",
+    play: "Speel",
+    pause: "Pauze",
+    stop: "Stop",
+    tempo: "Tempo",
+    score: "Partituur",
+    pianoRoll: "Pianorol",
+    sheetMusic: "Bladmuziek",
+    scoreView: "Partituurweergave",
+    zoomOut: "Uitzoomen",
+    zoomIn: "Inzoomen",
+    exportPdf: "PDF exporteren",
+    exportPdfTip: "Huidige weergave als zwart-wit-PDF exporteren",
+    saveScore: "Partituur opslaan",
+    saveScoreTip: "MusicXML opslaan / exporteren",
+    layers: "Partituurlagen",
+    staves: "Notenbalken",
+    lyrics: "Tekst",
+    chords: "Akkoorden",
+    notesLayer: "Notities",
+    stavesTip: "Notenbalken tonen of verbergen",
+    lyricsTip: "Tekst tonen of verbergen",
+    chordsTip: "Akkoordsymbolen tonen of verbergen",
+    notesLayerTip: "Uitvoeringsnotities tonen of verbergen",
+    addAnnotations: "Annotaties toevoegen",
+    addChord: "+ Akkoord",
+    addNote: "+ Notitie",
+    addChordTip: "Akkoordsymbool toevoegen bij de afspeelkop",
+    addNoteTip: "Uitvoeringsnotitie toevoegen bij de afspeelkop",
+    scoreTip: "Klik op de tijdlijn om te zoeken. Pijltjestoetsen springen naar inzetten. Mute/solo-kleuren gelden in beide weergaven.",
+    rollAria: "MIDI-pianorol — klik om te zoeken",
+    sheetPlaceholder: "Laad een MusicXML-bestand om hier bladmuziek te zien.",
+    voices: "Stemmen",
+    muteAll: "Alles dempen",
+    unmuteAll: "Alles aanzetten",
+    otherVoices: "Andere stemmen",
+    emptyVoices: "Open een MIDI- of MusicXML-bestand om hier stemmen te zien.",
+    mute: "Dempen",
+    unmute: "Aanzetten",
+    solo: "Solo",
+    unsolo: "Solo uit",
+    renameVoice: "Klik om te hernoemen",
+    sharedPractice: "Gedeelde oefening",
+    undo: "Ongedaan",
+    undoTip: "Laatste gedeelde bewerking ongedaan maken",
+    pull: "Ophalen",
+    push: "Pushen",
+    syncStatusLoad: "Laad een MusicXML-partituur voor gedeelde notities en sync.",
+    exportPack: "Pakket exporteren",
+    importPack: "Pakket importeren",
+    syncSettings: "Sync-instellingen",
+    yourName: "Jouw naam (voor geschiedenis)",
+    syncSettingsTip: "Bij voorkeur: GitHub-repo (elke Push = commit). Token blijft alleen op dit apparaat.",
+    owner: "Eigenaar",
+    repo: "Repo",
+    path: "Pad",
+    branch: "Branch",
+    ghToken: "GitHub-token (Contents lezen/schrijven)",
+    remoteUrl: "Of generieke externe JSON-URL (GET ophalen / PUT pushen)",
+    saveSettings: "Instellingen opslaan",
+    rehearsalNotes: "Repetitienotities",
+    addSharedNote: "Gedeelde notitie toevoegen…",
+    add: "Toevoegen",
+    delete: "Verwijderen",
+    editHistory: "Bewerkingsgeschiedenis",
+    noRehearsalNotes: "Nog geen repetitienotities.",
+    langToggleTip: "Switch language / Wissel taal",
+  },
+};
+
+const STORAGE_KEY = "mpp-lang";
+
+let lang = "en";
+/** @type {Set<() => void>} */
+const listeners = new Set();
+
+function detectLang() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === "en" || saved === "nl") return saved;
+  } catch {
+    /* ignore */
+  }
+  const nav = (navigator.language || "en").toLowerCase();
+  return nav.startsWith("nl") ? "nl" : "en";
+}
+
+export function getLang() {
+  return lang;
+}
+
+export function t(key, vars = {}) {
+  const table = STRINGS[lang] || STRINGS.en;
+  let s = table[key] ?? STRINGS.en[key] ?? key;
+  for (const [k, v] of Object.entries(vars)) {
+    s = s.replaceAll(`{${k}}`, String(v));
+  }
+  return s;
+}
+
+export function setLang(next) {
+  const n = next === "nl" ? "nl" : "en";
+  if (n === lang) return;
+  lang = n;
+  try {
+    localStorage.setItem(STORAGE_KEY, lang);
+  } catch {
+    /* ignore */
+  }
+  document.documentElement.lang = lang === "nl" ? "nl" : "en";
+  applyDomI18n();
+  for (const fn of listeners) {
+    try {
+      fn();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function onLangChange(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+/** Apply data-i18n / data-i18n-title / data-i18n-aria / data-i18n-placeholder on the document. */
+export function applyDomI18n() {
+  document.title = t("title");
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    const key = el.getAttribute("data-i18n");
+    if (key) el.textContent = t(key);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-html]")) {
+    const key = el.getAttribute("data-i18n-html");
+    if (key) el.innerHTML = t(key);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-title]")) {
+    const key = el.getAttribute("data-i18n-title");
+    if (key) el.title = t(key);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) {
+    const key = el.getAttribute("data-i18n-aria");
+    if (key) el.setAttribute("aria-label", t(key));
+  }
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) {
+    const key = el.getAttribute("data-i18n-placeholder");
+    if (key) el.setAttribute("placeholder", t(key));
+  }
+  const toggle = document.getElementById("langToggle");
+  if (toggle) {
+    toggle.textContent = lang === "nl" ? "NL" : "EN";
+    toggle.setAttribute("aria-pressed", "true");
+    toggle.title = t("langToggleTip");
+  }
+}
+
+export function initI18n() {
+  lang = detectLang();
+  document.documentElement.lang = lang === "nl" ? "nl" : "en";
+  applyDomI18n();
+  document.getElementById("langToggle")?.addEventListener("click", () => {
+    setLang(lang === "en" ? "nl" : "en");
+  });
+}
