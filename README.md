@@ -129,9 +129,9 @@ The **Shared practice** panel (after loading MusicXML):
 
 ### GitHub Pages
 
-1. Push this repository to GitHub (repo root = this folder’s contents).
-2. **Settings → Pages** → deploy from branch `main`, folder `/ (root)`.
-3. Share `https://<user>.github.io/<repo>/`.
+1. Push this repository to GitHub (repo root = this folder’s contents). The workflow in `.github/workflows/pages.yml` deploys on every push to `main`.
+2. **Settings → Pages** → **Build and deployment** → Source: **GitHub Actions** (not “Deploy from a branch”).
+3. After the workflow succeeds, share `https://<user>.github.io/<repo>/`.
 
 `.nojekyll` is included so GitHub does not process the site with Jekyll. Paths are relative (`./js`, `./vendor`, …).
 
