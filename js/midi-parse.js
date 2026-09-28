@@ -441,9 +441,17 @@ export function parseMidi(buffer) {
   const filePitchBends = pitchBends.slice();
   let pitchBendSource = "none";
   let activePitchBends = [];
-  // Markers are the editable source of truth. Baked file bends are for DAWs;
-  // ignore them when JustPlay markers are present so we do not double-apply.
-  if (markers.length) {
+  // Markers win only when they carry real JI (not the inert ji:false load stub).
+  // Otherwise prefer baked file bends from a JustPlay MIDI save/export.
+  const editableMarkers = markers.filter(
+    (m) =>
+      m
+      && !m.bypass
+      && m.metadata?.ji !== false
+      && Array.isArray(m.config)
+      && m.config.some((c) => c != null && Array.isArray(c)),
+  );
+  if (editableMarkers.length) {
     activePitchBends = buildPitchBendsFromMarkers(notes, markers, {
       refNote: jiFileRefNote ?? 60,
       pitchBendRange,
