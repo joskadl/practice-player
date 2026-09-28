@@ -200,6 +200,28 @@ export class SheetView {
   }
 
   /**
+   * Rename a MusicXML part (stave label). Updates pending edits + on-score text.
+   * @param {string} partId
+   * @param {string} name
+   * @param {{ notify?: boolean }} [opts] — when false, skip onPartRename (caller already synced UI)
+   */
+  renamePart(partId, name, opts = {}) {
+    const next = String(name || "").trim();
+    if (!partId || !next || !this.xml) return;
+    const pending = this._ensurePending();
+    pending.parts.set(partId, next);
+    for (const el of this.container.querySelectorAll(
+      `text[data-pp-edit="part"][data-pp-part-id="${String(partId).replace(/"/g, "")}"]`,
+    )) {
+      el.textContent = next;
+    }
+    this._setDirty(true);
+    if (opts.notify !== false && typeof this.onPartRename === "function") {
+      this.onPartRename(partId, next);
+    }
+  }
+
+  /**
    * Apply pending edits into MusicXML text and return it (does not clear dirty).
    */
   buildEditedXml() {
@@ -998,13 +1020,8 @@ export class SheetView {
         el.textContent = next;
       }
     } else if (kind === "part" && partId) {
-      pending.parts.set(partId, next);
-      for (const el of this.container.querySelectorAll(
-        `text[data-pp-edit="part"][data-pp-part-id="${String(partId).replace(/"/g, "")}"]`,
-      )) {
-        el.textContent = next;
-      }
-      if (typeof this.onPartRename === "function") this.onPartRename(partId, next);
+      this.renamePart(partId, next, { notify: true });
+      return;
     }
     this._setDirty(true);
   }

@@ -245,6 +245,47 @@ select {
   font-size: 0.85rem;
 }
 
+.voice-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.voice-name-label {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.1rem 0.2rem;
+  margin: 0;
+  border-radius: 4px;
+  cursor: text;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-name-label:hover,
+.voice-name-label:focus-visible {
+  outline: 1px dashed var(--accent);
+  outline-offset: 1px;
+}
+
+.voice-name-input {
+  font: inherit;
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+  min-width: 6rem;
+  max-width: 100%;
+  background: #fff;
+}
+
 .hint {
   margin: 0.4rem 0 0;
   color: var(--muted);

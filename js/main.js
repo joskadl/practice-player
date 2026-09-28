@@ -71,6 +71,16 @@ sheet.onPartRename = (partId, name) => {
   }
   renderVoices();
 };
+
+function applyVoiceRename(voice, nextName) {
+  const name = String(nextName || "").trim();
+  if (!name || name === voice.name) return;
+  voice.name = name;
+  if (voice.partId && project?.musicXml) {
+    sheet.renamePart(voice.partId, name, { notify: false });
+  }
+  renderVoices();
+}
 sheet.voiceColor = (voice) => resolveVoiceColor(voice);
 
 const muted = new Set();
@@ -387,6 +397,7 @@ function renderVoices() {
     });
 
     const name = document.createElement("div");
+    name.className = "voice-name";
     const swatch = document.createElement("button");
     swatch.type = "button";
     swatch.className = "swatch";
@@ -397,7 +408,10 @@ function renderVoices() {
     picker.type = "color";
     picker.value = normalizeHex(resolveVoiceColor(voice));
     picker.hidden = true;
-    swatch.addEventListener("click", () => picker.click());
+    swatch.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      picker.click();
+    });
     picker.addEventListener("input", () => {
       const hex = picker.value;
       voiceColors.set(voice.id, hex);
@@ -406,7 +420,15 @@ function renderVoices() {
       roll.draw();
       if (sheet.hasScore()) sheet.applyVoiceVisibility();
     });
-    name.append(swatch, picker, document.createTextNode(voice.name));
+
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "voice-name-label";
+    label.textContent = voice.name;
+    label.title = "Click to rename";
+    label.addEventListener("click", () => beginVoiceNameEdit(voice, label, name));
+
+    name.append(swatch, picker, label);
 
     const meta = document.createElement("div");
     meta.className = "meta";
@@ -432,6 +454,36 @@ function normalizeHex(color) {
     return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
   }
   return "#888888";
+}
+
+function beginVoiceNameEdit(voice, labelEl, nameRow) {
+  if (nameRow.querySelector("input.voice-name-input")) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "voice-name-input";
+  input.value = voice.name;
+  input.setAttribute("aria-label", "Rename voice");
+  labelEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let finished = false;
+  const finish = (commit) => {
+    if (finished) return;
+    finished = true;
+    if (commit) applyVoiceRename(voice, input.value);
+    else renderVoices();
+  };
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      finish(true);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener("blur", () => finish(true));
 }
 
 function setLoadedUi(enabled) {
