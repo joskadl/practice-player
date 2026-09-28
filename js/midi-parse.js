@@ -3,7 +3,7 @@
  * Returns flattened timed notes, channel voices, pitch bends, and JustPlay JI meta.
  */
 
-import { buildPitchBendsFromMarkers } from "./ji-retune.js";
+import { buildJiRetunePlan } from "./ji-retune.js";
 
 const JI_CC_CHANNEL = 15;
 const JI_CC_MODE = 101;
@@ -114,7 +114,8 @@ function parseJiMarkerText(text, streamTick) {
   try {
     const data = JSON.parse(text.slice("JI_MARKER:".length));
     if (!data || data.type !== "ji_marker") return null;
-    const config = (data.config || []).map((c) => (Array.isArray(c) ? c.map(Number) : [0, 0]));
+    // Preserve null slots — never coerce to [0,0] (that maps every PC to unison).
+    const config = (data.config || []).map((c) => (Array.isArray(c) ? c.map(Number) : null));
     if (config.length < 12) return null;
     return {
       tick: data.tick != null ? data.tick | 0 : streamTick,
@@ -441,22 +442,17 @@ export function parseMidi(buffer) {
   const filePitchBends = pitchBends.slice();
   let pitchBendSource = "none";
   let activePitchBends = [];
+  let noteRetunes = {};
   // Markers win only when they carry real JI (not the inert ji:false load stub).
   // Otherwise prefer baked file bends from a JustPlay MIDI save/export.
-  const editableMarkers = markers.filter(
-    (m) =>
-      m
-      && !m.bypass
-      && m.metadata?.ji !== false
-      && Array.isArray(m.config)
-      && m.config.some((c) => c != null && Array.isArray(c)),
-  );
-  if (editableMarkers.length) {
-    activePitchBends = buildPitchBendsFromMarkers(notes, markers, {
-      refNote: jiFileRefNote ?? 60,
-      pitchBendRange,
-    });
-    pitchBendSource = activePitchBends.length ? "markers" : "none";
+  const plan = buildJiRetunePlan(notes, markers, {
+    refNote: jiFileRefNote ?? 60,
+    pitchBendRange,
+  });
+  if (plan.pitchBends.length) {
+    activePitchBends = plan.pitchBends;
+    noteRetunes = plan.noteRetunes;
+    pitchBendSource = "markers";
   } else if (filePitchBends.length) {
     activePitchBends = filePitchBends;
     pitchBendSource = "file";
@@ -471,6 +467,7 @@ export function parseMidi(buffer) {
     notes,
     markers,
     pitchBends: activePitchBends,
+    noteRetunes,
     filePitchBends,
     pitchBendSource,
     onsetTicks,

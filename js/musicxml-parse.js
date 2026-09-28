@@ -5,7 +5,7 @@
  * (``justplay-ji-file`` / ``justplay-ji-markers``) for shared XML with JustPlay.
  */
 
-import { buildPitchBendsFromMarkers } from "./ji-retune.js";
+import { buildJiRetunePlan } from "./ji-retune.js";
 
 const STEP_TO_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
@@ -298,13 +298,14 @@ export function parseMusicXml(xmlText) {
   const { markers, jiFileRefNote, pitchBendRange, justPlayMeta } = readJustPlayJiFromXml(root);
   let pitchBends = [];
   let pitchBendSource = "none";
-  if (markers.length) {
-    pitchBends = buildPitchBendsFromMarkers(notes, markers, {
-      referenceMidiNote: jiFileRefNote ?? 60,
-      pitchBendRange,
-    });
-    pitchBendSource = pitchBends.length ? "markers" : "none";
-  }
+  let noteRetunes = {};
+  const plan = buildJiRetunePlan(notes, markers, {
+    refNote: jiFileRefNote ?? 60,
+    pitchBendRange,
+  });
+  pitchBends = plan.pitchBends;
+  noteRetunes = plan.noteRetunes;
+  if (pitchBends.length) pitchBendSource = "markers";
 
   return {
     ticksPerBeat: globalTicksPerBeat,
@@ -320,6 +321,7 @@ export function parseMusicXml(xmlText) {
     notes,
     markers,
     pitchBends,
+    noteRetunes,
     filePitchBends: [],
     pitchBendSource,
     onsetTicks,
@@ -372,14 +374,23 @@ function readJustPlayJiFromXml(root) {
         justPlayMeta = true;
         for (const item of list) {
           if (!item || typeof item !== "object") continue;
+          const refNote = item.metadata?.refNote ?? item.refNote ?? null;
+          const ji = item.metadata?.ji ?? item.ji;
           markers.push({
             tick: Number(item.tick) || 0,
-            config: Array.isArray(item.config) ? item.config : null,
+            config: Array.isArray(item.config)
+              ? item.config.map((c) => (Array.isArray(c) ? c.map(Number) : null))
+              : null,
             name: item.name || "",
             bypass: !!item.bypass,
             mode: item.mode || "tonnetz",
-            refNote: item.metadata?.refNote ?? item.refNote ?? null,
-            ji: item.metadata?.ji ?? item.ji,
+            refNote,
+            ji,
+            metadata: {
+              ...(item.metadata && typeof item.metadata === "object" ? item.metadata : {}),
+              ...(refNote != null ? { refNote: Number(refNote) } : {}),
+              ...(ji !== undefined ? { ji } : {}),
+            },
           });
         }
         markers.sort((a, b) => a.tick - b.tick);

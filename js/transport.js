@@ -43,6 +43,18 @@ export class Transport {
     this._restorePitchBendsAt(this.playheadTick);
   }
 
+  /** Note as heard: remapped MIDI number / play channel when JI markers require it. */
+  _soundingNote(note) {
+    if (!this.applyPitchBends || !this.project?.noteRetunes) return note;
+    const rt = this.project.noteRetunes[note.id];
+    if (!rt) return note;
+    return {
+      ...note,
+      note: rt.note,
+      channel: rt.channel,
+    };
+  }
+
   setTempoPercent(pct) {
     const next = Math.max(25, Math.min(200, pct | 0));
     if (this.playing) {
@@ -79,14 +91,16 @@ export class Transport {
       (n) => n.start === tick && this.handlers.isVoiceAudible(n.voiceId),
     );
     for (const note of atTick) {
-      this._sounding.set(note.id, note);
-      this.handlers.onNoteOn(note);
+      const sounding = this._soundingNote(note);
+      this._sounding.set(note.id, sounding);
+      this.handlers.onNoteOn(sounding);
       const durTicks = Math.max(1, note.end - note.start);
       const ms = Math.min(8000, Math.max(80, this._ticksToMs(tick, durTicks)));
       const timer = setTimeout(() => {
         if (!this._sounding.has(note.id)) return;
+        const held = this._sounding.get(note.id);
         this._sounding.delete(note.id);
-        this.handlers.onNoteOff(note);
+        this.handlers.onNoteOff(held);
       }, ms);
       this._auditionTimers.push(timer);
     }
@@ -196,6 +210,9 @@ export class Transport {
     const channels = new Set();
     for (const n of this.project.notes) channels.add(n.channel);
     for (const pb of this.project.pitchBends || []) channels.add(pb.channel);
+    for (const rt of Object.values(this.project.noteRetunes || {})) {
+      if (rt?.channel != null) channels.add(rt.channel);
+    }
 
     if (!this.applyPitchBends || !this.project.hasPitchBends) {
       for (const ch of channels) this._emitBend(ch, PB_CENTER);
@@ -248,8 +265,9 @@ export class Transport {
     for (const note of this.project.notes) {
       if (!inWindow(note.start)) continue;
       if (!this.handlers.isVoiceAudible(note.voiceId)) continue;
-      this._sounding.set(note.id, note);
-      this.handlers.onNoteOn(note);
+      const sounding = this._soundingNote(note);
+      this._sounding.set(note.id, sounding);
+      this.handlers.onNoteOn(sounding);
     }
 
     this._lastTick = to;
