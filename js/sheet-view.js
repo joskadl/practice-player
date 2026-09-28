@@ -649,26 +649,11 @@ export class SheetView {
   }
 
   /**
-   * Map playhead → OSMD note-slice index.
-   * Prefer onset↔slice index mapping (avoids tick/wn drift from pickups etc.).
+   * Map playhead → OSMD note-slice index by whole-note time only.
+   * (Index mapping to project onsets can desync when slice counts differ per bar.)
    */
   _timelineIndexForTick(tick) {
     if (!this._timeline.length) return 0;
-    const onsetIdx = this._onsetTicks.length ? this._onsetIndex(tick) : -1;
-    if (
-      onsetIdx >= 0 &&
-      this._onsetTicks.length > 0 &&
-      Math.abs(this._onsetTicks.length - this._timeline.length) <= Math.max(2, this._timeline.length * 0.05)
-    ) {
-      if (this._onsetTicks.length === this._timeline.length) {
-        return Math.min(onsetIdx, this._timeline.length - 1);
-      }
-      // Proportional map when counts are close but not identical.
-      const tMax = Math.max(1, this._onsetTicks.length - 1);
-      const sMax = Math.max(1, this._timeline.length - 1);
-      return Math.min(this._timeline.length - 1, Math.round((onsetIdx / tMax) * sMax));
-    }
-
     const onsetTick = this._activeOnsetTick(tick);
     const targetWn = this._tickToWn(onsetTick);
     let idx = 0;
@@ -680,8 +665,7 @@ export class SheetView {
   }
 
   /**
-   * Move OSMD cursor to the pitched note entry for the active onset at ``tick``,
-   * then pin the cursor image just left of the rendered noteheads.
+   * Move OSMD cursor to the pitched note entry for the active onset at ``tick``.
    * @param {number} tick
    * @param {{scroll?: boolean}} [opts]
    */
@@ -703,8 +687,15 @@ export class SheetView {
     if (!this._timeline.length) return;
 
     const idx = this._timelineIndexForTick(this._lastPlayheadTick);
+    const targetWn = this._timeline[idx]?.wn;
 
-    if (idx < this._cursorIdx) {
+    // Resync from the start when jumping backwards or when the iterator drifted.
+    const curWn = fractionReal(
+      cursor.iterator?.currentTimeStamp ?? cursor.iterator?.CurrentTimestamp,
+    );
+    const drifted =
+      targetWn != null && this._cursorIdx === idx && Math.abs(curWn - targetWn) > 1e-4;
+    if (idx < this._cursorIdx || drifted) {
       this._resetCursorToFirstNote();
     }
     while (this._cursorIdx < idx && !iteratorEnded(cursor.iterator)) {
@@ -712,59 +703,65 @@ export class SheetView {
       this._cursorIdx += 1;
     }
     try {
+      // Let OSMD place the cursor using its own AbsolutePosition math (per system/bar).
       cursor.update();
     } catch {
       /* ignore */
     }
-    this._alignCursorToNoteheads(idx);
+    // Nudge just left of the notehead column using the same OSMD unit space — never
+    // mix in getBoundingClientRect (that reused wrong coords across systems/bars).
+    this._nudgeCursorToEntryAnchor();
     this._ensureCursorVisible();
     if (scroll) this._scrollCursorIntoView();
   }
 
   /**
-   * Place the OSMD cursor image just before the actual notehead graphics.
-   * Avoids mid-bar timestamp interpolation when staff-entry anchors are unreliable.
+   * Leftmost reliable staff-entry / notehead x in OSMD units under the cursor.
    */
-  _alignCursorToNoteheads(timelineIdx) {
+  _entryAnchorX() {
     const cursor = this.osmd?.cursor;
-    const el = cursor?.cursorElement;
-    if (!cursor || !el) return;
+    const it = cursor?.iterator;
+    if (!cursor || !it) return null;
 
-    let xUnit = this._leftmostNoteheadX();
-    if (xUnit == null && timelineIdx != null && this._timeline[timelineIdx]) {
-      xUnit = this._timeline[timelineIdx].x;
-    }
-    if (xUnit == null) return;
-
-    // ThinLeft uses (x - 1.5); we pin tighter to the notehead.
-    const leftPx = (xUnit - CURSOR_HEAD_GAP) * OSMD_UNIT * this.zoom;
-    el.style.left = `${Math.max(0, leftPx)}px`;
-
-    // Also try SVG bbox if AbsolutePosition drifts from painted heads.
-    try {
-      const gnotes =
-        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
-      const parent = this.container.getBoundingClientRect();
-      let minLeft = Infinity;
-      for (const gn of gnotes) {
-        const src = gn?.sourceNote || gn?.getSourceNote?.();
-        const isRest =
-          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
-        if (isRest) continue;
-        const svg = gn?.getSVGGElement?.() || gn?.svggElement;
-        if (!svg || typeof svg.getBoundingClientRect !== "function") continue;
-        const r = svg.getBoundingClientRect();
-        if (!r.width && !r.height) continue;
-        const left = r.left - parent.left + this.container.scrollLeft;
-        if (left < minLeft) minLeft = left;
+    let minX = null;
+    const consider = (x) => {
+      if (typeof x === "number" && Number.isFinite(x)) {
+        minX = minX == null ? x : Math.min(minX, x);
       }
-      if (minLeft < Infinity) {
-        const gapPx = Math.max(2, 3.5 * this.zoom);
-        el.style.left = `${Math.max(0, minLeft - gapPx)}px`;
+    };
+
+    try {
+      const voiceEntries =
+        typeof it.CurrentVisibleVoiceEntries === "function"
+          ? it.CurrentVisibleVoiceEntries()
+          : it.CurrentVoiceEntries || it.currentVoiceEntries || [];
+      for (const ve of voiceEntries || []) {
+        if (typeof cursor.getStaffEntryFromVoiceEntry === "function") {
+          const gse = cursor.getStaffEntryFromVoiceEntry(ve);
+          consider(gse?.PositionAndShape?.AbsolutePosition?.x);
+        }
       }
     } catch {
-      /* AbsolutePosition fallback already applied */
+      /* ignore */
     }
+
+    // Prefer painted notehead anchors when present (onset of the head, not the stem).
+    const headX = this._leftmostNoteheadX();
+    if (headX != null) return headX;
+    return minX;
+  }
+
+  /**
+   * Place the cursor image just before the current entry using OSMD page coordinates.
+   */
+  _nudgeCursorToEntryAnchor() {
+    const el = this.osmd?.cursor?.cursorElement;
+    if (!el) return;
+    const xUnit = this._entryAnchorX();
+    if (xUnit == null) return;
+    // Match OSMD ThinLeft scaling; small gap so the bar sits at the note onset.
+    const leftPx = (xUnit - CURSOR_HEAD_GAP) * OSMD_UNIT * this.zoom;
+    el.style.left = `${Math.max(0, leftPx)}px`;
   }
 
   _scrollCursorIntoView() {

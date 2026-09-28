@@ -55,7 +55,6 @@ const els = {
   sheetZoomOutBtn: document.getElementById("sheetZoomOutBtn"),
   sheetZoomInBtn: document.getElementById("sheetZoomInBtn"),
   sheetZoomLabel: document.getElementById("sheetZoomLabel"),
-  sheetStaffLinesBtn: document.getElementById("sheetStaffLinesBtn"),
   sheetSaveBtn: document.getElementById("sheetSaveBtn"),
   scoreHeading: document.getElementById("scoreHeading"),
   scoreHint: document.getElementById("scoreHint"),
@@ -407,15 +406,6 @@ function updateSheetZoomLabel() {
 }
 
 function updateSheetToolbar() {
-  if (els.sheetStaffLinesBtn) {
-    els.sheetStaffLinesBtn.setAttribute(
-      "aria-pressed",
-      sheet.showStaffLines ? "true" : "false",
-    );
-    els.sheetStaffLinesBtn.title = sheet.showStaffLines
-      ? "Hide staff lines"
-      : "Show staff lines";
-  }
   if (els.sheetSaveBtn) els.sheetSaveBtn.hidden = !sheet.dirty;
 }
 
@@ -537,7 +527,7 @@ function updateScoreViewUi() {
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
   els.scoreHeading.textContent = showSheet ? "Sheet music" : "Piano roll";
   els.scoreHint.textContent = showSheet
-    ? "Click title or stave names to edit · save icon appears when changed"
+    ? "←/→ skip onsets. Use − / + to zoom."
     : hasSheet
       ? "Click the timeline to seek. Switch to Sheet music for the score. Mute/solo colours apply in both views."
       : "Click the timeline to seek. Arrow keys skip onsets. Load MusicXML for sheet music.";
@@ -873,13 +863,6 @@ els.sheetZoomOutBtn?.addEventListener("click", async () => {
 els.sheetZoomInBtn?.addEventListener("click", async () => {
   await sheet.zoomBy(0.1);
   updateSheetZoomLabel();
-});
-
-els.sheetStaffLinesBtn?.addEventListener("click", () => {
-  void sheet.setShowStaffLines(!sheet.showStaffLines).then(() => {
-    updateSheetToolbar();
-    void recordSharedEdit(sheet.showStaffLines ? "Show staff lines" : "Hide staff lines");
-  });
 });
 
 els.sheetSaveBtn?.addEventListener("click", () => {

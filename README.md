@@ -78,8 +78,8 @@ Files stay on your device unless you Export / Push a practice pack.
 ### Sheet music
 
 - Toggle **Piano roll** / **Sheet music**.
-- **− / +** zoom; **Lines** shows/hides staff lines.
-- Click **title** or **stave labels** on the score to edit.
+- **− / +** zoom.
+- Click **title** or **stave labels** on the score (or voice names in Voices) to rename.
 - When there are unsaved score edits, a **save** icon appears → downloads edited MusicXML.
 - Closing the tab with unsaved edits (or unpushed sync changes) asks you to confirm.
 
