@@ -1,136 +1,283 @@
 # MIDI Practice Player
 
-Small standalone web app for rehearsing MIDI / MusicXML with friends:
+Standalone web app for choir / ensemble rehearsal of **MIDI** and **MusicXML** scores: mute/solo voices, sheet + piano roll, optional Just Intonation, offline install, and **shared practice packs** with sync.
 
-- Open a `.mid` / `.midi` or `.musicxml` / `.xml` file in the browser
-- Mute / solo individual **voices** (MIDI channels or MusicXML parts)
-- While soloing, set **Other voices** to a quiet accompaniment level (default 25%)
-- Play, pause, stop, scrub the playhead, change tempo %
-- **Piano roll** or **sheet music** (MusicXML via OpenSheetMusicDisplay); toggle between them
-- Mute/solo colours apply in both the roll and the score
-- JustPlay retuned MIDI: **Just Intonation / Standard** toggle (applies or centres pitch bends)
-- Hear playback through a bundled General MIDI soundfont (default: **Choir Aahs**)
-- Installable / offline after the first visit (service worker + PWA manifest)
+Version: see `js/version.js` / footer (`v0.1.0`).
 
-## Run locally
+---
 
-GitHub Pages and Dropbox `file://` both need HTTP for the soundfont. From this folder:
+## Table of contents
 
-```bash
-# Python 3
-python -m http.server 8765
-```
+- [Features](#features)
+- [For singers (users)](#for-singers-users)
+  - [Open a score](#open-a-score)
+  - [Playback](#playback)
+  - [Voices (mute / solo / colours / names)](#voices-mute--solo--colours--names)
+  - [Sheet music](#sheet-music)
+  - [Install for offline use](#install-for-offline-use)
+  - [Shared practice (notes + sync)](#shared-practice-notes--sync)
+  - [Keyboard shortcuts](#keyboard-shortcuts)
+- [For maintainers (hosting)](#for-maintainers-hosting)
+  - [GitHub Pages](#github-pages)
+  - [Shared sync via GitHub](#shared-sync-via-github)
+- [For developers](#for-developers)
+  - [Run locally](#run-locally)
+  - [Repository layout](#repository-layout)
+  - [Architecture notes](#architecture-notes)
+  - [Practice pack format](#practice-pack-format)
+  - [Service worker / PWA](#service-worker--pwa)
+  - [Versioning](#versioning)
+  - [Vendored dependencies](#vendored-dependencies)
+  - [JustPlay MIDI](#justplay-midi)
+- [Demo files](#demo-files)
+- [Limitations & tips](#limitations--tips)
 
-Then open http://localhost:8765/
+---
 
-Or with Node: `npx --yes serve -p 8765`
+## Features
 
-## Host on GitHub Pages (free)
+| Area | What you get |
+|------|----------------|
+| Files | `.mid` / `.midi`, `.musicxml` / `.xml` |
+| Playback | Play / pause / stop, tempo %, seek, onset skip (←/→) |
+| Voices | Mute, solo, accompaniment level for non-soloed parts |
+| Views | Piano roll and sheet music (MusicXML) |
+| Edits | Title, stave/voice names, colours, staff lines on/off |
+| Export | Edited MusicXML; practice pack `.practice.json` |
+| Sync | Local IndexedDB + Undo; Pull/Push to GitHub or HTTP URL |
+| Offline | PWA install; service worker caches app + soundfont |
+| JI | JustPlay marker / pitch-bend MIDI → JI ↔ 12-TET toggle |
 
-1. Push this repo to GitHub.
-2. **Settings → Pages →** Deploy from branch `main` / folder `/ (root)`.
+---
+
+## For singers (users)
+
+### Open a score
+
+1. Open the app (website or installed PWA).
+2. **Open file** → choose a MIDI or MusicXML file from your device.
+3. MusicXML opens in **Sheet music**; MIDI opens the **piano roll** (no sheet).
+
+Files stay on your device unless you Export / Push a practice pack.
+
+### Playback
+
+- **Play / Pause / Stop**, scrub the timeline, adjust **Tempo**.
+- First Play may take a few seconds (WASM synth + soundfont).
+- **Sound** menu: Choir Aahs (default), piano, strings, etc.
+- Red playhead on the sheet sits on the sounding note onset.
+
+### Voices (mute / solo / colours / names)
+
+- **Mute** / **Solo** per voice.
+- With any solo active, **Other voices** sets how loud the rest are (default 25%; 0% = classic solo).
+- **Mute all** mutes everyone and clears solos; **Unmute all** clears mutes and solos.
+- Click the **colour square** to change note colour (roll + sheet).
+- Click the **voice name** (or the stave name on the sheet) to rename — same name in both places.
+
+### Sheet music
+
+- Toggle **Piano roll** / **Sheet music**.
+- **− / +** zoom; **Lines** shows/hides staff lines.
+- Click **title** or **stave labels** on the score to edit.
+- When there are unsaved score edits, a **save** icon appears → downloads edited MusicXML.
+- Closing the tab with unsaved edits (or unpushed sync changes) asks you to confirm.
+
+### Install for offline use
+
+1. Visit the app **once while online** (caches the app + ~6 MB soundfont).
+2. Click **Install for offline**, or use the browser menu:
+   - **Android / desktop Chrome or Edge:** Install app / Add to Home screen  
+   - **iPhone Safari:** Share → **Add to Home Screen**
+3. Afterwards you can open the installed app offline.
+
+Your own score files are not pre-cached; open them from the device each time (or use a synced practice pack).
+
+### Shared practice (notes + sync)
+
+The **Shared practice** panel (after loading MusicXML):
+
+| Control | Purpose |
+|---------|---------|
+| **Undo** | Revert the last shared edit on this device |
+| **Pull** | Download the group’s pack from the remote |
+| **Push** | Upload your pack (GitHub → new commit = history) |
+| **Export pack** | Save `.practice.json` (score + edits + notes) |
+| **Import pack** | Load a `.practice.json` from someone else |
+| **Sync settings** | Your name, GitHub repo/token, or generic URL |
+| **Rehearsal notes** | Shared text notes for the group |
+| **Edit history** | Short log of revisions in the pack |
+
+**Typical choir workflow**
+
+1. One person configures **Sync settings** (GitHub recommended — see [Shared sync via GitHub](#shared-sync-via-github)).
+2. Others set the same owner/repo/path (token only needed to Push; public repos can Pull without a token).
+3. Work offline as needed → **Push** when online.
+4. If Pull would overwrite unpushed local work, the app asks first — **Export pack** as a backup if unsure.
+
+### Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| Space | Play / pause (when not typing in an input) |
+| ← / → | Previous / next note onset |
+| Escape | Pause and silence (panic) |
+
+---
+
+## For maintainers (hosting)
+
+### GitHub Pages
+
+1. Push this repository to GitHub (repo root = this folder’s contents).
+2. **Settings → Pages** → deploy from branch `main`, folder `/ (root)`.
 3. Share `https://<user>.github.io/<repo>/`.
 
-The app uses **relative paths** (`./vendor`, `./soundfonts`), so it works at the site root or under a subpath if you keep those relatives.
+`.nojekyll` is included so GitHub does not process the site with Jekyll. Paths are relative (`./js`, `./vendor`, …).
 
-## Offline use via Pages
+**Password protection:** GitHub Pages has no built-in password. Prefer an open URL for a choir app; use Cloudflare Access or private Pages (paid) if you need a real gate. Do not rely on a fake client-side password.
 
-Yes — with a caveat:
+### Shared sync via GitHub
 
-1. Friends open the Pages URL **once while online**. The service worker caches the shell, vendors, and the ~6 MB soundfont.
-2. After that they can reopen the same URL offline, or **Install / Add to Home Screen** (Chrome, Edge, Safari) for an app-like shortcut that works offline.
-3. Their own MIDI/MusicXML files are chosen locally each session (not uploaded); those are not cached by the app.
+Recommended setup for group edits with history:
 
-There is no way for GitHub Pages alone to put files on someone’s disk without a first network visit. For a true “download once” package, use the repo’s **Code → Download ZIP** and run `python -m http.server` locally.
+1. Create a folder in the repo, e.g. `shared/` (can be this same repo or a separate one).
+2. In the app → **Sync settings**:
+   - **Your name** — appears in history / notes  
+   - **Owner** / **Repo** / **Path** — e.g. `shared/` (Push writes `shared/<projectId>.practice.json`)  
+   - **Branch** — usually `main`  
+   - **Token** — GitHub [fine-grained PAT](https://github.com/settings/tokens) with **Contents: Read and write** on that repo (only on devices that Push; store stays in that browser’s IndexedDB)
+3. **Push** creates/updates the file via the GitHub Contents API (each push = git commit).
+4. **Pull** loads the latest file.
 
-### Password protection?
+Alternatively use **Export / Import pack** or a generic HTTPS URL that supports GET (and PUT if you Push).
 
-Usually **not worth it** for this app. It is a static front-end: no accounts, no uploaded scores on the server, and the soundfont is already public. Automated “abuse” risk is mostly bandwidth on GitHub’s CDN, which is negligible for a small choir.
+More detail: [docs/SYNC.md](docs/SYNC.md).
 
-GitHub Pages also has **no built-in password**. Options if you still want a gate:
+---
 
-| Approach | Notes |
-|----------|--------|
-| Keep the repo **private** + Pages (needs GitHub Pro/Team for private Pages) | Real access control via GitHub accounts |
-| Cloudflare Access / similar in front of Pages | Proper login, free tier often enough for a small group |
-| Client-side “password” in the page | Trivial to bypass; only stops casual visitors |
+## For developers
 
-Recommendation: host it openly; share the URL in the group chat. If you later add anything sensitive, use Cloudflare Access rather than a fake client password.
+### Run locally
 
-## Try the demo
+Serve over **HTTP** (not `file://`) so the soundfont and worklets load:
 
-With the local server running, open the app and load:
+```bash
+cd practice-player   # or repo root if this is the repo
+python -m http.server 8765
+# → http://localhost:8765/
+```
 
-- `examples/demo.mid` — short two-voice MIDI
-- `examples/stille-nacht.musicxml` — four-voice score (sheet + roll + mute/solo colours)
+Or: `npx --yes serve -p 8765`
 
-## Sheet edits & export
+No build step: ES modules load directly in the browser.
 
-In **Sheet music** view:
+### Repository layout
 
-- Click the **title** or a **stave name** on the score to edit it inline (Voices list updates too)
-- Click a **colour square** in Voices to recolour roll + sheet notes (saved into MusicXML)
-- Use **Lines** to show/hide staff lines
-- When anything changed, a **save** icon appears — click it to download the edited MusicXML
-- Closing the tab with unsaved edits prompts to stay and save
+```
+index.html              UI shell
+styles.css              Layout / theme
+manifest.webmanifest    PWA manifest
+sw.js                   Service worker (cache version bump on release)
+package.json            name / version metadata
+.nojekyll               GitHub Pages
+js/
+  main.js               App wiring
+  midi-parse.js         SMF → notes, voices, bends, onsets
+  musicxml-parse.js     MusicXML → notes + voices
+  musicxml-edit.js      Title / parts / staff-lines / voice colours → XML
+  ji-retune.js          Marker palettes → pitch bends
+  transport.js          Soft real-time tick clock
+  synth.js              FluidSynth wrapper + panic
+  piano-roll.js         Canvas roll
+  sheet-view.js         OSMD sheet, cursor, inline edit
+  practice-pack.js      Pack schema, history, compare
+  local-store.js        IndexedDB + sync settings
+  sync-remote.js        GitHub Contents API / HTTP pull-push
+  project-session.js    Session + undo + persist
+  version.js            APP_VERSION / label (keep in sync with tags)
+vendor/                 FluidSynth, js-synthesizer, OpenSheetMusicDisplay
+soundfonts/TimGM6mb.sf2 GM bank (~6 MB)
+examples/               demo.mid, stille-nacht.musicxml
+icons/                  PWA icons
+docs/                   Extra maintainer docs
+```
 
-## Shared practice & sync
+### Architecture notes
 
-Local-first shared editing for the choir:
+- **Playback:** `Transport` schedules note on/off and pitch bends from project ticks; `ChoirSynth` renders via AudioWorklet FluidSynth.
+- **Mute/solo:** `voiceGain()` → velocity scaling + roll/sheet colour; accompaniment level when solos are active.
+- **Sheet cursor:** notes-only OSMD iterator + alignment to notehead bounds (avoids mid-bar interpolation).
+- **Edits:** MusicXML is the score source; `musicxml-edit.js` patches metadata; colours also in a `miscellaneous-field`.
+- **Sync:** local-first pack in IndexedDB; remote is optional; conflicts resolved by explicit Pull confirmation, not silent merge.
 
-1. **On this device** — edits (labels, colours, staff lines, rehearsal notes) auto-save to IndexedDB and keep an **Undo** stack.
-2. **Offline** — keep practising; Push waits until you’re online.
-3. **Sync** — configure GitHub (owner/repo/path + token) or a generic JSON URL under **Sync settings**.
-   - **Pull** downloads the remote pack (conflict prompt if you have unpushed local changes).
-   - **Push** uploads and, on GitHub, creates a **git commit** (full history in the repo).
-4. **Export / Import pack** — `.practice.json` always works as a manual share (email, Drive, etc.).
+### Practice pack format
 
-Each pack stores MusicXML + edits + notes + a short revision log.
+JSON file (`*.practice.json`):
 
-## Offline install
+| Field | Meaning |
+|-------|---------|
+| `format` | `"midi-practice-pack"` |
+| `version` | Schema version (`1`) |
+| `id` | Stable project id |
+| `rev` | Monotonic revision (conflict / sync) |
+| `musicXml` | Full score XML payload |
+| `edits` | `{ title, parts, staffLines, voiceColors }` |
+| `notes` | Rehearsal notes `{ id, text, author, updatedAt, tick? }` |
+| `history` | Recent `{ rev, at, author, summary }` entries |
 
-Use **Install for offline** in the header (or your browser’s Add to Home Screen). After one online visit the service worker caches the app and soundfont. The footer shows the app version (from the git tag).
+See `js/practice-pack.js` for create/parse/compare helpers.
 
-## JustPlay retuned MIDI
+### Service worker / PWA
 
-JustPlay embeds:
+- `sw.js` precaches the shell, vendors, soundfont, examples.
+- **Bump `CACHE`** (e.g. `midi-practice-player-v7`) whenever shipped assets change so clients refresh.
+- Add new `js/*.js` paths to `PRECACHE` when you add modules.
+- Manifest: `manifest.webmanifest` (`display: standalone`).
+
+### Versioning
+
+1. Update `package.json` `"version"` and `js/version.js` (`APP_VERSION`).
+2. Optionally `git tag vX.Y.Z`.
+3. Bump service worker `CACHE` string.
+4. Deploy Pages / push `main`.
+
+### Vendored dependencies
+
+Do not assume npm install for runtime — binaries live under `vendor/` and `soundfonts/`.
+
+| Package | Role |
+|---------|------|
+| libfluidsynth + js-synthesizer | Soft synth |
+| OpenSheetMusicDisplay | Sheet rendering |
+| TimGM6mb.sf2 | GM soundfont |
+
+### JustPlay MIDI
 
 | Signal | Where | Purpose |
 |--------|--------|---------|
-| Pitch bend range | RPN (CC 101/100/6) on each channel | External synths / this player set ±N semitones |
-| Pitch bend range | `JI_FILE:{…,"pbRange":N}` text meta | JustPlay / this player can read range without parsing RPN |
-| JI markers | `JI_MARKER:` / CC channel 16 | Palette for re-import into JustPlay |
-| Pitch bend events | `pitchwheel` before notes **or** computed in this player from markers | Actual JI detune for playback |
+| Pitch bend range | RPN / `JI_FILE` meta `pbRange` | Bend sensitivity |
+| JI markers | `JI_MARKER:` / CC ch 16 | Palette for JI |
+| Pitch bends | File events **or** synthesized from markers | Detune |
 
-**Marker-only export (recommended for practice):** export Standard from JustPlay with JI markers embedded. This player detects `JI_FILE` / `JI_MARKER` (and channel-16 CC markers), synthesizes pitch bends from the marker palettes, and shows the **Just Intonation / Standard** toggle.
+Prefer **marker-only Standard export** from JustPlay for practice; this app synthesizes bends and offers JI ↔ Standard.
 
-**Retuned export:** baked `pitchwheel` events are used directly when present.
+---
 
-## Layout
+## Demo files
 
-| Path | Role |
-|------|------|
-| `index.html` | UI |
-| `styles.css` | Layout |
-| `js/midi-parse.js` | Standard MIDI File → notes, voices, bends |
-| `js/transport.js` | Soft real-time tick clock (mute/solo + pitch bend) |
-| `js/piano-roll.js` | Canvas piano roll + click-to-seek |
-| `js/synth.js` | FluidSynth WASM + TimGM6mb.sf2 |
-| `js/musicxml-parse.js` | MusicXML → notes + part voices |
-| `js/musicxml-edit.js` | Title / part labels / staff-lines patch + download |
-| `js/sheet-view.js` | OpenSheetMusicDisplay + mute/solo colours |
-| `js/ji-retune.js` | Marker palette → pitch bends |
-| `js/main.js` | Wires UI |
-| `sw.js` / `manifest.webmanifest` | Offline PWA shell |
-| `vendor/` | js-synthesizer, libfluidsynth, OpenSheetMusicDisplay |
-| `soundfonts/TimGM6mb.sf2` | ~6 MB GM bank |
-| `examples/` | Sample MIDI + MusicXML |
+| File | Contents |
+|------|----------|
+| `examples/demo.mid` | Short two-voice MIDI |
+| `examples/stille-nacht.musicxml` | Four-voice score (sheet + voices) |
 
-## Notes
+---
 
-- First Play click downloads/compiles the WASM synth and loads the soundfont; later plays are faster.
-- Tracks with zero notes are hidden.
-- Channel 10 (drums) stays a drum kit in the soundfont; melodic tracks use the selected GM program.
-- Browser autoplay rules: Play must be a user gesture (button click), which this UI already uses.
-- Space toggles play/pause when focus is not in an input; Escape silences stuck notes.
-- Stop / Pause / Seek / Play always run a MIDI panic (All Sound Off) so hanging notes clear.
+## Limitations & tips
+
+- Compressed `.mxl` is not supported — export uncompressed MusicXML (e.g. from MuseScore).
+- First Play is slower (WASM + soundfont); later plays are faster.
+- Empty tracks are hidden; channel 10 stays drums in the soundfont.
+- Space / arrows ignore shortcuts while focus is in an input or select.
+- GitHub sync tokens never leave the browser that saved them; treat PATs like passwords.
+- Shared sync is built for MusicXML projects (MIDI-only stays local on that device).
