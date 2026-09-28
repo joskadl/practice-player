@@ -1,9 +1,16 @@
 /**
  * MusicXML (score-partwise) → practice-player project notes / voices.
  * Enough for playback + mute/solo; not a full MusicXML engraver.
+ * JustPlay JI markers are read from identification/miscellaneous fields
+ * (``justplay-ji-file`` / ``justplay-ji-markers``) for shared XML with JustPlay.
  */
 
+import { buildPitchBendsFromMarkers } from "./ji-retune.js";
+
 const STEP_TO_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+const JI_FILE_FIELD = "justplay-ji-file";
+const JI_MARKERS_FIELD = "justplay-ji-markers";
 
 function channelForPartIndex(index) {
   // Skip GM drum channel 9.
@@ -288,6 +295,17 @@ export function parseMusicXml(xmlText) {
 
   if (!notes.length) throw new Error("No notes found in this MusicXML file");
 
+  const { markers, jiFileRefNote, pitchBendRange, justPlayMeta } = readJustPlayJiFromXml(root);
+  let pitchBends = [];
+  let pitchBendSource = "none";
+  if (markers.length) {
+    pitchBends = buildPitchBendsFromMarkers(notes, markers, {
+      referenceMidiNote: jiFileRefNote ?? 60,
+      pitchBendRange,
+    });
+    pitchBendSource = pitchBends.length ? "markers" : "none";
+  }
+
   return {
     ticksPerBeat: globalTicksPerBeat,
     durationTicks: Math.max(durationTicks, ...notes.map((n) => n.end)),
@@ -300,19 +318,77 @@ export function parseMusicXml(xmlText) {
     })),
     voices: voicesOut,
     notes,
-    markers: [],
-    pitchBends: [],
+    markers,
+    pitchBends,
     filePitchBends: [],
-    pitchBendSource: "none",
+    pitchBendSource,
     onsetTicks,
-    justPlayMeta: false,
-    jiFileRefNote: null,
-    pitchBendRange: 2,
+    justPlayMeta,
+    jiFileRefNote,
+    pitchBendRange,
     bendRangeByChannel: {},
-    hasPitchBends: false,
+    hasPitchBends: pitchBends.length > 0,
     sourceType: "musicxml",
     musicXml: xmlText,
   };
+}
+
+function readMiscField(root, name) {
+  const identification = [...root.children].find((el) => el.localName === "identification");
+  if (!identification) return null;
+  const misc = [...identification.children].find((el) => el.localName === "miscellaneous");
+  if (!misc) return null;
+  for (const field of misc.children) {
+    if (field.localName === "miscellaneous-field" && field.getAttribute("name") === name) {
+      return field.textContent?.trim() || null;
+    }
+  }
+  return null;
+}
+
+function readJustPlayJiFromXml(root) {
+  let jiFileRefNote = null;
+  let pitchBendRange = 2;
+  let justPlayMeta = false;
+  const fileRaw = readMiscField(root, JI_FILE_FIELD);
+  if (fileRaw) {
+    try {
+      const data = JSON.parse(fileRaw);
+      if (data && typeof data === "object") {
+        justPlayMeta = true;
+        if (data.refNote != null) jiFileRefNote = Number(data.refNote);
+        if (data.pbRange != null) pitchBendRange = Math.max(1, Math.min(96, Number(data.pbRange) || 2));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const markers = [];
+  const markersRaw = readMiscField(root, JI_MARKERS_FIELD);
+  if (markersRaw) {
+    try {
+      const list = JSON.parse(markersRaw);
+      if (Array.isArray(list)) {
+        justPlayMeta = true;
+        for (const item of list) {
+          if (!item || typeof item !== "object") continue;
+          markers.push({
+            tick: Number(item.tick) || 0,
+            config: Array.isArray(item.config) ? item.config : null,
+            name: item.name || "",
+            bypass: !!item.bypass,
+            mode: item.mode || "tonnetz",
+            refNote: item.metadata?.refNote ?? item.refNote ?? null,
+            ji: item.metadata?.ji ?? item.ji,
+          });
+        }
+        markers.sort((a, b) => a.tick - b.tick);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return { markers, jiFileRefNote, pitchBendRange, justPlayMeta };
 }
 
 export async function readMusicXmlFile(file) {

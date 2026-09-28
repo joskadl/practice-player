@@ -3,7 +3,7 @@
  * After the first online visit, the app (including the soundfont) is cached.
  */
 
-const CACHE = "midi-practice-player-v9";
+const CACHE = "midi-practice-player-v10";
 
 const PRECACHE = [
   "./",
