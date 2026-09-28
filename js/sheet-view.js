@@ -95,6 +95,8 @@ export class SheetView {
     this._onsetTicks = [];
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
+    /** When false, EngravingRules.StaffLineWidth = 0 (and MusicXML staff-lines=0 on export). */
+    this.showStaffLines = true;
   }
 
   async ensure() {
@@ -213,6 +215,44 @@ export class SheetView {
     }
   }
 
+  _applyStaffLineRules() {
+    if (!this.osmd?.EngravingRules) return;
+    try {
+      const rules = this.osmd.EngravingRules;
+      if (this.showStaffLines) {
+        rules.StaffLineWidth = 0.1;
+        rules.LedgerLineWidth = 1;
+      } else {
+        rules.StaffLineWidth = 0;
+        rules.LedgerLineWidth = 0;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * @param {boolean} show
+   * @param {{rerender?: boolean}} [opts]
+   */
+  async setShowStaffLines(show, opts = {}) {
+    this.showStaffLines = !!show;
+    if (!this.osmd || !this._ready) return;
+    this._applyStaffLineRules();
+    if (opts.rerender === false) return;
+    const wasHidden = this.container.hidden;
+    if (wasHidden) this.container.hidden = false;
+    this.osmd.render();
+    this.applyVoiceVisibility();
+    this._buildTimeline();
+    this.setPlayhead(this._lastPlayheadTick, { scroll: false });
+    if (wasHidden) this.container.hidden = true;
+  }
+
+  getXml() {
+    return this.xml;
+  }
+
   /**
    * @param {string} xmlText
    * @param {{
@@ -253,17 +293,42 @@ export class SheetView {
       });
       this._configurePageWidth(width);
       this._applyCursorStyle();
+      this._applyStaffLineRules();
 
       await this.osmd.load(xmlText);
       this.osmd.zoom = this.zoom;
+      this._applyStaffLineRules();
       this.osmd.render();
       this._mapInstruments(opts.voices || []);
       this.applyVoiceVisibility();
       this._buildTimeline();
       this._ready = true;
-      this.setPlayhead(0, { scroll: false });
+      this.setPlayhead(opts.playheadTick ?? 0, { scroll: false });
     } finally {
       restore();
+    }
+  }
+
+  /**
+   * Reload MusicXML while preserving zoom / playhead / staff-line preference.
+   */
+  async reloadXml(xmlText, opts = {}) {
+    const playhead = this._lastPlayheadTick;
+    const zoom = this.zoom;
+    const showLines = this.showStaffLines;
+    await this.load(xmlText, {
+      ...opts,
+      playheadTick: playhead,
+    });
+    this.zoom = zoom;
+    this.showStaffLines = showLines;
+    if (this.osmd) {
+      this.osmd.zoom = zoom;
+      this._applyStaffLineRules();
+      this.osmd.render();
+      this.applyVoiceVisibility();
+      this._buildTimeline();
+      this.setPlayhead(playhead, { scroll: true });
     }
   }
 
@@ -273,6 +338,7 @@ export class SheetView {
     const width = await this._waitForWidth();
     this._configurePageWidth(width);
     this._applyCursorStyle();
+    this._applyStaffLineRules();
     this.osmd.zoom = this.zoom;
     this.osmd.render();
     this.applyVoiceVisibility();
@@ -290,6 +356,7 @@ export class SheetView {
     const wasHidden = this.container.hidden;
     if (wasHidden) this.container.hidden = false;
     this._applyCursorStyle();
+    this._applyStaffLineRules();
     this.osmd.zoom = this.zoom;
     this.osmd.render();
     this.applyVoiceVisibility();

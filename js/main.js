@@ -6,6 +6,11 @@ import {
   nextOnsetTick,
 } from "./midi-parse.js";
 import { parseMusicXml, readMusicXmlFile } from "./musicxml-parse.js";
+import {
+  readMusicXmlMeta,
+  applyMusicXmlEdits,
+  downloadMusicXml,
+} from "./musicxml-edit.js";
 import { ChoirSynth } from "./synth.js";
 import { Transport } from "./transport.js";
 import { PianoRoll, channelColor } from "./piano-roll.js";
@@ -37,6 +42,12 @@ const els = {
   sheetZoomOutBtn: document.getElementById("sheetZoomOutBtn"),
   sheetZoomInBtn: document.getElementById("sheetZoomInBtn"),
   sheetZoomLabel: document.getElementById("sheetZoomLabel"),
+  sheetEditPanel: document.getElementById("sheetEditPanel"),
+  sheetTitleInput: document.getElementById("sheetTitleInput"),
+  sheetStaffLinesToggle: document.getElementById("sheetStaffLinesToggle"),
+  sheetPartFields: document.getElementById("sheetPartFields"),
+  sheetApplyBtn: document.getElementById("sheetApplyBtn"),
+  sheetExportBtn: document.getElementById("sheetExportBtn"),
   scoreHeading: document.getElementById("scoreHeading"),
   scoreHint: document.getElementById("scoreHint"),
   accompRow: document.getElementById("accompRow"),
@@ -57,6 +68,8 @@ let project = null;
 let scoreView = "roll";
 /** When JustPlay meta is present: true = apply pitch bends (JI), false = 12-TET center. */
 let jiEnabled = true;
+/** Original loaded file name (for export naming). */
+let sourceFileName = "";
 
 /** 0–1 gain for non-soloed voices when any solo is active. */
 let accompanimentLevel = 0.25;
@@ -117,6 +130,98 @@ function syncSheetPlayhead(tick, opts = {}) {
 function updateSheetZoomLabel() {
   if (!els.sheetZoomLabel) return;
   els.sheetZoomLabel.textContent = `${Math.round(sheet.getZoom() * 100)}%`;
+}
+
+function clearSheetEditUi() {
+  if (els.sheetEditPanel) els.sheetEditPanel.hidden = true;
+  if (els.sheetTitleInput) els.sheetTitleInput.value = "";
+  if (els.sheetPartFields) els.sheetPartFields.innerHTML = "";
+  if (els.sheetStaffLinesToggle) els.sheetStaffLinesToggle.checked = true;
+}
+
+function populateSheetEditUi(xmlText) {
+  if (!els.sheetEditPanel) return;
+  try {
+    const meta = readMusicXmlMeta(xmlText);
+    els.sheetTitleInput.value = meta.title || "";
+    els.sheetStaffLinesToggle.checked = meta.staffLines !== 0;
+    sheet.showStaffLines = meta.staffLines !== 0;
+    els.sheetPartFields.innerHTML = "";
+    for (const part of meta.parts) {
+      const label = document.createElement("label");
+      label.className = "sheet-edit-field";
+      label.dataset.partId = part.id;
+      label.append(document.createTextNode(part.id));
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = part.name;
+      input.dataset.partId = part.id;
+      input.autocomplete = "off";
+      label.append(input);
+      els.sheetPartFields.appendChild(label);
+    }
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+    clearSheetEditUi();
+  }
+}
+
+function collectSheetEdits() {
+  const parts = [...els.sheetPartFields.querySelectorAll("input[data-part-id]")].map((input) => ({
+    id: input.dataset.partId,
+    name: input.value.trim() || input.dataset.partId,
+  }));
+  return {
+    title: els.sheetTitleInput.value.trim(),
+    parts,
+    staffLines: els.sheetStaffLinesToggle.checked ? 5 : 0,
+  };
+}
+
+function exportBaseName() {
+  const base = (sourceFileName || "score").replace(/\.(musicxml|xml|mid|midi)$/i, "");
+  return `${base || "score"}-edited.musicxml`;
+}
+
+async function applySheetEdits() {
+  if (!project?.musicXml) return;
+  try {
+    const edits = collectSheetEdits();
+    const nextXml = applyMusicXmlEdits(project.musicXml, edits);
+    project.musicXml = nextXml;
+    const meta = readMusicXmlMeta(nextXml);
+    for (const voice of project.voices) {
+      const part = meta.parts.find((p) => p.id === voice.partId);
+      if (part) voice.name = part.name;
+    }
+    sheet.showStaffLines = edits.staffLines !== 0;
+    setStatus("Updating score…");
+    await sheet.reloadXml(nextXml, {
+      voices: project.voices,
+      isVoiceAudible: voiceAudible,
+      voiceGain,
+      ticksPerBeat: project.ticksPerBeat,
+      onsetTicks: project.onsetTicks || [],
+    });
+    renderVoices();
+    updateScoreViewUi();
+    setStatus("Score labels updated — export MusicXML when ready.");
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
+}
+
+function exportSheetMusicXml() {
+  if (!project?.musicXml) return;
+  try {
+    const edits = collectSheetEdits();
+    const nextXml = applyMusicXmlEdits(project.musicXml, edits);
+    project.musicXml = nextXml;
+    downloadMusicXml(nextXml, exportBaseName());
+    setStatus(`Exported ${exportBaseName()}`);
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
 }
 
 function skipOnset(dir) {
@@ -199,11 +304,12 @@ function updateScoreViewUi() {
   els.pianoRoll.hidden = showSheet;
   els.sheetMusic.hidden = !showSheet;
   if (els.sheetZoomControls) els.sheetZoomControls.hidden = !showSheet;
+  if (els.sheetEditPanel) els.sheetEditPanel.hidden = !showSheet;
   els.viewRollBtn.setAttribute("aria-pressed", showSheet ? "false" : "true");
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
   els.scoreHeading.textContent = showSheet ? "Sheet music" : "Piano roll";
   els.scoreHint.textContent = showSheet
-    ? "Red cursor sits on the sounding note onset. Use − / + to zoom. Mute/solo colours mark parts."
+    ? "Edit title and stave labels below, then Apply or Export. Cursor sits on the sounding onset."
     : hasSheet
       ? "Click the timeline to seek. Switch to Sheet music for the score. Mute/solo colours apply in both views."
       : "Click the timeline to seek. Arrow keys skip onsets. Load MusicXML for sheet music.";
@@ -333,6 +439,7 @@ function setLoadedUi(enabled) {
 
 async function applyProject(parsed, fileName) {
   project = wrapProject(parsed);
+  sourceFileName = fileName || "";
   jiEnabled = !!(parsed.justPlayMeta && parsed.hasPitchBends);
   transport.setProject(project);
   roll.setProject(project);
@@ -346,6 +453,7 @@ async function applyProject(parsed, fileName) {
 
   if (parsed.musicXml) {
     setStatus("Rendering sheet music…");
+    populateSheetEditUi(parsed.musicXml);
     await sheet.load(parsed.musicXml, {
       voices: project.voices,
       isVoiceAudible: voiceAudible,
@@ -353,10 +461,14 @@ async function applyProject(parsed, fileName) {
       ticksPerBeat: project.ticksPerBeat,
       onsetTicks: project.onsetTicks || [],
     });
+    await sheet.setShowStaffLines(els.sheetStaffLinesToggle?.checked !== false, {
+      rerender: true,
+    });
     scoreView = "sheet";
     updateSheetZoomLabel();
   } else {
     sheet.clear();
+    clearSheetEditUi();
     els.sheetMusic.innerHTML =
       '<p class="hint sheet-placeholder">Load a MusicXML file to see sheet music here.</p>';
     scoreView = "roll";
@@ -399,9 +511,11 @@ async function loadFile(file) {
     await applyProject(parsed, file.name);
   } catch (err) {
     project = null;
+    sourceFileName = "";
     transport.setProject(null);
     roll.setProject(null);
     sheet.clear();
+    clearSheetEditUi();
     els.sheetMusic.innerHTML =
       '<p class="hint sheet-placeholder">Load a MusicXML file to see sheet music here.</p>';
     setLoadedUi(false);
@@ -429,6 +543,17 @@ els.sheetZoomOutBtn?.addEventListener("click", async () => {
 els.sheetZoomInBtn?.addEventListener("click", async () => {
   await sheet.zoomBy(0.1);
   updateSheetZoomLabel();
+});
+
+els.sheetApplyBtn?.addEventListener("click", () => {
+  void applySheetEdits();
+});
+els.sheetExportBtn?.addEventListener("click", () => {
+  exportSheetMusicXml();
+});
+els.sheetStaffLinesToggle?.addEventListener("change", () => {
+  // Live preview; Apply/Export persist into MusicXML.
+  void sheet.setShowStaffLines(!!els.sheetStaffLinesToggle.checked);
 });
 
 els.instrumentSelect.addEventListener("change", () => {

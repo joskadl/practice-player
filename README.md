@@ -33,7 +33,7 @@ Or with Node: `npx --yes serve -p 8765`
 
 The app uses **relative paths** (`./vendor`, `./soundfonts`), so it works at the site root or under a subpath if you keep those relatives.
 
-### Offline use via Pages
+## Offline use via Pages
 
 Yes — with a caveat:
 
@@ -43,12 +43,35 @@ Yes — with a caveat:
 
 There is no way for GitHub Pages alone to put files on someone’s disk without a first network visit. For a true “download once” package, use the repo’s **Code → Download ZIP** and run `python -m http.server` locally.
 
+### Password protection?
+
+Usually **not worth it** for this app. It is a static front-end: no accounts, no uploaded scores on the server, and the soundfont is already public. Automated “abuse” risk is mostly bandwidth on GitHub’s CDN, which is negligible for a small choir.
+
+GitHub Pages also has **no built-in password**. Options if you still want a gate:
+
+| Approach | Notes |
+|----------|--------|
+| Keep the repo **private** + Pages (needs GitHub Pro/Team for private Pages) | Real access control via GitHub accounts |
+| Cloudflare Access / similar in front of Pages | Proper login, free tier often enough for a small group |
+| Client-side “password” in the page | Trivial to bypass; only stops casual visitors |
+
+Recommendation: host it openly; share the URL in the group chat. If you later add anything sensitive, use Cloudflare Access rather than a fake client password.
+
 ## Try the demo
 
 With the local server running, open the app and load:
 
 - `examples/demo.mid` — short two-voice MIDI
 - `examples/stille-nacht.musicxml` — four-voice score (sheet + roll + mute/solo colours)
+
+## Sheet edits & export
+
+In **Sheet music** view you can:
+
+- Edit the **title** and each **stave / part label**
+- Toggle **Staff lines** off for a cleaner choir-practice look
+- **Apply to score** to re-render immediately
+- **Export MusicXML** to download the edited file (labels + staff-lines preference written into the XML)
 
 ## JustPlay retuned MIDI
 
@@ -76,6 +99,7 @@ JustPlay embeds:
 | `js/piano-roll.js` | Canvas piano roll + click-to-seek |
 | `js/synth.js` | FluidSynth WASM + TimGM6mb.sf2 |
 | `js/musicxml-parse.js` | MusicXML → notes + part voices |
+| `js/musicxml-edit.js` | Title / part labels / staff-lines patch + download |
 | `js/sheet-view.js` | OpenSheetMusicDisplay + mute/solo colours |
 | `js/ji-retune.js` | Marker palette → pitch bends |
 | `js/main.js` | Wires UI |

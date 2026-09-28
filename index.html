@@ -82,6 +82,26 @@
         </div>
       </div>
       <p id="scoreHint" class="hint tight score-hint">Click the timeline to seek. Arrow keys skip onsets. Mute/solo colours apply in both views.</p>
+      <div id="sheetEditPanel" class="sheet-edit" hidden>
+        <div class="sheet-edit-row">
+          <label class="sheet-edit-field">
+            Title
+            <input id="sheetTitleInput" type="text" autocomplete="off" spellcheck="true" />
+          </label>
+          <label class="toggle sheet-edit-toggle">
+            <input id="sheetStaffLinesToggle" type="checkbox" checked />
+            <span class="toggle-ui" aria-hidden="true"></span>
+            <span class="toggle-label">
+              <strong>Staff lines</strong>
+            </span>
+          </label>
+        </div>
+        <div id="sheetPartFields" class="sheet-part-fields"></div>
+        <div class="sheet-edit-actions">
+          <button type="button" id="sheetApplyBtn" class="secondary">Apply to score</button>
+          <button type="button" id="sheetExportBtn">Export MusicXML</button>
+        </div>
+      </div>
       <canvas
         id="pianoRoll"
         class="piano-roll"
