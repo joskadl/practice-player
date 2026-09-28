@@ -440,15 +440,18 @@ export function parseMidi(buffer) {
 
   const filePitchBends = pitchBends.slice();
   let pitchBendSource = "none";
-  let activePitchBends = filePitchBends;
-  if (filePitchBends.length) {
-    pitchBendSource = "file";
-  } else if (markers.length) {
+  let activePitchBends = [];
+  // Markers are the editable source of truth. Baked file bends are for DAWs;
+  // ignore them when JustPlay markers are present so we do not double-apply.
+  if (markers.length) {
     activePitchBends = buildPitchBendsFromMarkers(notes, markers, {
       refNote: jiFileRefNote ?? 60,
       pitchBendRange,
     });
     pitchBendSource = activePitchBends.length ? "markers" : "none";
+  } else if (filePitchBends.length) {
+    activePitchBends = filePitchBends;
+    pitchBendSource = "file";
   }
 
   return {
