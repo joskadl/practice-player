@@ -3,7 +3,7 @@
  * After the first online visit, the app (including the soundfont) is cached.
  */
 
-const CACHE = "midi-practice-player-v5";
+const CACHE = "midi-practice-player-v6";
 
 const PRECACHE = [
   "./",
@@ -20,6 +20,10 @@ const PRECACHE = [
   "./js/piano-roll.js",
   "./js/sheet-view.js",
   "./js/version.js",
+  "./js/practice-pack.js",
+  "./js/local-store.js",
+  "./js/sync-remote.js",
+  "./js/project-session.js",
   "./vendor/libfluidsynth-2.4.6.js",
   "./vendor/js-synthesizer.min.js",
   "./vendor/js-synthesizer.worklet.min.js",

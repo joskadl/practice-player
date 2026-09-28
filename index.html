@@ -126,6 +126,60 @@
       <ul id="voiceList" class="voice-list"></ul>
       <p id="emptyVoices" class="hint">Open a MIDI or MusicXML file to see voices here.</p>
     </section>
+
+    <section id="syncPanel" class="panel sync-panel" hidden>
+      <div class="voices-head">
+        <h2>Shared practice</h2>
+        <div class="voice-actions">
+          <button type="button" id="syncUndoBtn" class="secondary" disabled title="Undo last shared edit">Undo</button>
+          <button type="button" id="syncPullBtn" class="secondary" disabled>Pull</button>
+          <button type="button" id="syncPushBtn" disabled>Push</button>
+        </div>
+      </div>
+      <p id="syncStatus" class="hint tight sync-status">Load a MusicXML score to enable shared notes and sync.</p>
+      <div class="sync-actions">
+        <button type="button" id="syncExportBtn" class="secondary" disabled>Export pack</button>
+        <label class="file-btn secondary-file">
+          Import pack
+          <input id="syncImportInput" type="file" accept=".json,application/json" hidden />
+        </label>
+        <button type="button" id="syncSettingsToggle" class="secondary">Sync settings</button>
+      </div>
+      <div id="syncSettings" class="sync-settings" hidden>
+        <label class="sheet-edit-field">
+          Your name (for history)
+          <input id="syncAuthorInput" type="text" autocomplete="nickname" placeholder="e.g. Joska" />
+        </label>
+        <p class="hint tight">Preferred: GitHub repo (each Push creates a commit = history). Token stays on this device only.</p>
+        <div class="sync-settings-grid">
+          <label class="sheet-edit-field">Owner<input id="ghOwner" type="text" placeholder="username" autocomplete="off" /></label>
+          <label class="sheet-edit-field">Repo<input id="ghRepo" type="text" placeholder="midi-practice-player" autocomplete="off" /></label>
+          <label class="sheet-edit-field">Path<input id="ghPath" type="text" placeholder="shared/" autocomplete="off" /></label>
+          <label class="sheet-edit-field">Branch<input id="ghBranch" type="text" placeholder="main" autocomplete="off" /></label>
+        </div>
+        <label class="sheet-edit-field">
+          GitHub token (Contents read/write)
+          <input id="ghToken" type="password" autocomplete="off" placeholder="ghp_… (optional for public pull)" />
+        </label>
+        <label class="sheet-edit-field">
+          Or generic remote JSON URL (GET pull / PUT push)
+          <input id="remoteUrl" type="url" placeholder="https://…" autocomplete="off" />
+        </label>
+        <button type="button" id="syncSettingsSave" class="secondary">Save settings</button>
+      </div>
+      <div class="notes-block">
+        <h3 class="notes-heading">Rehearsal notes</h3>
+        <ul id="notesList" class="notes-list"></ul>
+        <div class="notes-add">
+          <input id="noteInput" type="text" placeholder="Add a shared note…" disabled />
+          <button type="button" id="noteAddBtn" class="secondary" disabled>Add</button>
+        </div>
+      </div>
+      <details id="historyDetails" class="history-details">
+        <summary>Edit history</summary>
+        <ol id="historyList" class="history-list"></ol>
+      </details>
+    </section>
   </main>
 
   <footer class="app-footer">

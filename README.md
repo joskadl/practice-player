@@ -74,6 +74,19 @@ In **Sheet music** view:
 - When anything changed, a **save** icon appears — click it to download the edited MusicXML
 - Closing the tab with unsaved edits prompts to stay and save
 
+## Shared practice & sync
+
+Local-first shared editing for the choir:
+
+1. **On this device** — edits (labels, colours, staff lines, rehearsal notes) auto-save to IndexedDB and keep an **Undo** stack.
+2. **Offline** — keep practising; Push waits until you’re online.
+3. **Sync** — configure GitHub (owner/repo/path + token) or a generic JSON URL under **Sync settings**.
+   - **Pull** downloads the remote pack (conflict prompt if you have unpushed local changes).
+   - **Push** uploads and, on GitHub, creates a **git commit** (full history in the repo).
+4. **Export / Import pack** — `.practice.json` always works as a manual share (email, Drive, etc.).
+
+Each pack stores MusicXML + edits + notes + a short revision log.
+
 ## Offline install
 
 Use **Install for offline** in the header (or your browser’s Add to Home Screen). After one online visit the service worker caches the app and soundfont. The footer shows the app version (from the git tag).

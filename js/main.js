@@ -9,12 +9,26 @@ import { parseMusicXml, readMusicXmlFile } from "./musicxml-parse.js";
 import {
   readMusicXmlMeta,
   downloadMusicXml,
+  applyMusicXmlEdits,
 } from "./musicxml-edit.js";
 import { ChoirSynth } from "./synth.js";
 import { Transport } from "./transport.js";
 import { PianoRoll, channelColor } from "./piano-roll.js";
 import { SheetView } from "./sheet-view.js";
 import { APP_VERSION_LABEL } from "./version.js";
+import {
+  downloadPack,
+  parsePracticePack,
+  comparePacks,
+  newId,
+} from "./practice-pack.js";
+import {
+  defaultSyncSettings,
+  loadSyncSettings,
+  saveSyncSettings,
+} from "./local-store.js";
+import { pullRemote, pushRemote, syncConfigured } from "./sync-remote.js";
+import { ProjectSession } from "./project-session.js";
 
 const els = {
   fileInput: document.getElementById("fileInput"),
@@ -54,15 +68,41 @@ const els = {
   tuningModeLabel: document.getElementById("tuningModeLabel"),
   installBtn: document.getElementById("installBtn"),
   appVersion: document.getElementById("appVersion"),
+  syncPanel: document.getElementById("syncPanel"),
+  syncStatus: document.getElementById("syncStatus"),
+  syncUndoBtn: document.getElementById("syncUndoBtn"),
+  syncPullBtn: document.getElementById("syncPullBtn"),
+  syncPushBtn: document.getElementById("syncPushBtn"),
+  syncExportBtn: document.getElementById("syncExportBtn"),
+  syncImportInput: document.getElementById("syncImportInput"),
+  syncSettingsToggle: document.getElementById("syncSettingsToggle"),
+  syncSettings: document.getElementById("syncSettings"),
+  syncAuthorInput: document.getElementById("syncAuthorInput"),
+  ghOwner: document.getElementById("ghOwner"),
+  ghRepo: document.getElementById("ghRepo"),
+  ghPath: document.getElementById("ghPath"),
+  ghBranch: document.getElementById("ghBranch"),
+  ghToken: document.getElementById("ghToken"),
+  remoteUrl: document.getElementById("remoteUrl"),
+  syncSettingsSave: document.getElementById("syncSettingsSave"),
+  notesList: document.getElementById("notesList"),
+  noteInput: document.getElementById("noteInput"),
+  noteAddBtn: document.getElementById("noteAddBtn"),
+  historyList: document.getElementById("historyList"),
 };
 
 const synth = new ChoirSynth();
 const sheet = new SheetView(els.sheetMusic);
+const session = new ProjectSession();
+/** @type {ReturnType<typeof defaultSyncSettings>} */
+let syncSettings = defaultSyncSettings();
 /** @type {Map<string, string>} voiceId → hex */
 const voiceColors = new Map();
 
 sheet.onDirtyChange = (dirty) => {
   if (els.sheetSaveBtn) els.sheetSaveBtn.hidden = !dirty;
+  void persistSessionSnapshot();
+  updateSyncUi();
 };
 sheet.onPartRename = (partId, name) => {
   if (!project?.voices) return;
@@ -70,6 +110,7 @@ sheet.onPartRename = (partId, name) => {
     if (voice.partId === partId) voice.name = name;
   }
   renderVoices();
+  void recordSharedEdit(`Renamed part ${partId} → ${name}`);
 };
 
 function applyVoiceRename(voice, nextName) {
@@ -80,6 +121,198 @@ function applyVoiceRename(voice, nextName) {
     sheet.renamePart(voice.partId, name, { notify: false });
   }
   renderVoices();
+  void recordSharedEdit(`Renamed voice → ${name}`);
+}
+
+function collectCurrentEdits() {
+  if (project?.musicXml) {
+    try {
+      return sheet.getEdits();
+    } catch {
+      /* fall through */
+    }
+  }
+  const voiceColorsObj = {};
+  for (const voice of project?.voices || []) {
+    if (voice.partId && voiceColors.has(voice.id)) {
+      voiceColorsObj[voice.partId] = voiceColors.get(voice.id);
+    }
+  }
+  return {
+    title: "",
+    parts: (project?.voices || []).map((v) => ({
+      id: v.partId || v.id,
+      name: v.name,
+    })),
+    staffLines: sheet.showStaffLines ? 5 : 0,
+    voiceColors: voiceColorsObj,
+  };
+}
+
+function snapshotIntoPack(pack) {
+  const edits = collectCurrentEdits();
+  pack.edits = edits;
+  pack.title = edits.title || pack.title || sourceFileName || "";
+  pack.sourceFileName = sourceFileName || pack.sourceFileName || "";
+  pack.musicXml = project?.musicXml
+    ? sheet.dirty
+      ? sheet.buildEditedXml()
+      : project.musicXml
+    : pack.musicXml || "";
+  pack.notes = Array.isArray(pack.notes) ? pack.notes : [];
+}
+
+async function persistSessionSnapshot() {
+  if (!session.hasPack() || !project) return;
+  try {
+    await session.autosaveFields({
+      musicXml: project.musicXml
+        ? sheet.dirty
+          ? sheet.buildEditedXml()
+          : project.musicXml
+        : "",
+      edits: collectCurrentEdits(),
+      title: collectCurrentEdits().title || sourceFileName,
+      sourceFileName,
+      notes: session.pack?.notes || [],
+    });
+  } catch {
+    /* ignore autosave errors */
+  }
+}
+
+async function recordSharedEdit(summary) {
+  if (!session.hasPack()) return;
+  try {
+    await session.commit(summary, (pack) => snapshotIntoPack(pack), syncSettings.author);
+    renderNotes();
+    renderHistory();
+    updateSyncUi();
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
+}
+
+async function updateSyncUi() {
+  const active = !!project?.musicXml && session.hasPack();
+  if (els.syncPanel) els.syncPanel.hidden = !project;
+  const depth = active ? await session.undoCount() : 0;
+  if (els.syncUndoBtn) els.syncUndoBtn.disabled = !active || depth <= 0;
+  if (els.syncExportBtn) els.syncExportBtn.disabled = !active;
+  if (els.noteInput) els.noteInput.disabled = !active;
+  if (els.noteAddBtn) els.noteAddBtn.disabled = !active;
+  const remoteOk = syncConfigured(syncSettings);
+  if (els.syncPullBtn) els.syncPullBtn.disabled = !active || !remoteOk;
+  if (els.syncPushBtn) els.syncPushBtn.disabled = !active || !remoteOk || !session.needsPush();
+  if (els.syncStatus) {
+    if (!project) {
+      els.syncStatus.textContent = "Load a MusicXML score to enable shared notes and sync.";
+    } else if (!project.musicXml) {
+      els.syncStatus.textContent =
+        "Shared sync needs MusicXML (MIDI-only files stay local on this device).";
+    } else if (!session.pack) {
+      els.syncStatus.textContent = "Preparing shared project…";
+    } else {
+      const pending = session.needsPush() ? " · local changes to push" : " · in sync";
+      const net = navigator.onLine ? "online" : "offline";
+      els.syncStatus.textContent = `${session.pack.title || "Project"} · r${session.pack.rev} · ${net}${pending}`;
+    }
+  }
+}
+
+function renderNotes() {
+  if (!els.notesList) return;
+  els.notesList.innerHTML = "";
+  const notes = session.pack?.notes || [];
+  if (!notes.length) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="hint">No rehearsal notes yet.</span>`;
+    els.notesList.appendChild(li);
+    return;
+  }
+  for (const note of [...notes].reverse()) {
+    const li = document.createElement("li");
+    const body = document.createElement("div");
+    body.textContent = note.text;
+    const meta = document.createElement("span");
+    meta.className = "note-meta";
+    const when = note.updatedAt ? new Date(note.updatedAt).toLocaleString() : "";
+    meta.textContent = [note.author, when].filter(Boolean).join(" · ");
+    body.appendChild(meta);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "secondary";
+    del.textContent = "Delete";
+    del.addEventListener("click", () => {
+      void session
+        .commit(
+          "Deleted note",
+          (pack) => {
+            snapshotIntoPack(pack);
+            pack.notes = (pack.notes || []).filter((n) => n.id !== note.id);
+          },
+          syncSettings.author,
+        )
+        .then(() => {
+          renderNotes();
+          renderHistory();
+          updateSyncUi();
+        })
+        .catch((err) => setStatus(err?.message || String(err), true));
+    });
+    li.append(body, del);
+    els.notesList.appendChild(li);
+  }
+}
+
+function renderHistory() {
+  if (!els.historyList) return;
+  els.historyList.innerHTML = "";
+  const hist = [...(session.pack?.history || [])].reverse();
+  for (const h of hist.slice(0, 20)) {
+    const li = document.createElement("li");
+    const when = h.at ? new Date(h.at).toLocaleString() : "";
+    li.textContent = `r${h.rev} — ${h.summary}${h.author ? ` (${h.author})` : ""}${when ? ` · ${when}` : ""}`;
+    els.historyList.appendChild(li);
+  }
+}
+
+function fillSyncSettingsForm() {
+  if (els.syncAuthorInput) els.syncAuthorInput.value = syncSettings.author || "";
+  if (els.ghOwner) els.ghOwner.value = syncSettings.githubOwner || "";
+  if (els.ghRepo) els.ghRepo.value = syncSettings.githubRepo || "";
+  if (els.ghPath) els.ghPath.value = syncSettings.githubPath || "shared/";
+  if (els.ghBranch) els.ghBranch.value = syncSettings.githubBranch || "main";
+  if (els.ghToken) els.ghToken.value = syncSettings.githubToken || "";
+  if (els.remoteUrl) els.remoteUrl.value = syncSettings.remoteUrl || "";
+}
+
+async function readSyncSettingsFromForm() {
+  syncSettings = {
+    author: els.syncAuthorInput?.value.trim() || "",
+    githubOwner: els.ghOwner?.value.trim() || "",
+    githubRepo: els.ghRepo?.value.trim() || "",
+    githubPath: els.ghPath?.value.trim() || "shared/",
+    githubBranch: els.ghBranch?.value.trim() || "main",
+    githubToken: els.ghToken?.value.trim() || "",
+    remoteUrl: els.remoteUrl?.value.trim() || "",
+  };
+  await saveSyncSettings(syncSettings);
+  updateSyncUi();
+}
+
+async function applyPackToPlayer(pack, { remoteSha = null, clearUndoStack = true } = {}) {
+  if (!pack.musicXml) throw new Error("Practice pack has no MusicXML payload");
+  const nextXml = applyMusicXmlEdits(pack.musicXml, pack.edits || {});
+  const parsed = parseMusicXml(nextXml);
+  parsed.musicXml = nextXml;
+  await applyProject(parsed, pack.sourceFileName || "shared.musicxml", {
+    skipSessionStart: true,
+  });
+  await session.loadFromPack(pack, { remoteSha, clearUndoStack });
+  renderNotes();
+  renderHistory();
+  updateSyncUi();
 }
 sheet.voiceColor = (voice) => resolveVoiceColor(voice);
 
@@ -100,13 +333,13 @@ let accompanimentLevel = 0.25;
 
 function resolveVoiceColor(voiceLike) {
   const channel = voiceLike?.channel ?? 0;
+  const id = voiceLike?.id;
+  if (id && voiceColors.has(id)) return voiceColors.get(id);
   const partId = voiceLike?.partId;
   if (partId) {
     const fromSheet = sheet.getPartColor?.(partId);
     if (fromSheet) return fromSheet;
   }
-  const id = voiceLike?.id;
-  if (id && voiceColors.has(id)) return voiceColors.get(id);
   return channelColor(channel);
 }
 
@@ -412,10 +645,18 @@ function renderVoices() {
       ev.stopPropagation();
       picker.click();
     });
-    picker.addEventListener("input", () => {
+    picker.addEventListener("change", () => {
       const hex = picker.value;
       voiceColors.set(voice.id, hex);
       if (voice.partId && project?.musicXml) sheet.setPartColor(voice.partId, hex);
+      swatch.style.background = hex;
+      roll.draw();
+      if (sheet.hasScore()) sheet.applyVoiceVisibility();
+      void recordSharedEdit(`Colour ${voice.name}`);
+    });
+    picker.addEventListener("input", () => {
+      const hex = picker.value;
+      voiceColors.set(voice.id, hex);
       swatch.style.background = hex;
       roll.draw();
       if (sheet.hasScore()) sheet.applyVoiceVisibility();
@@ -494,7 +735,7 @@ function setLoadedUi(enabled) {
   updateScoreViewUi();
 }
 
-async function applyProject(parsed, fileName) {
+async function applyProject(parsed, fileName, opts = {}) {
   project = wrapProject(parsed);
   sourceFileName = fileName || "";
   voiceColors.clear();
@@ -548,6 +789,24 @@ async function applyProject(parsed, fileName) {
 
   renderVoices();
   updateScoreViewUi();
+
+  if (!opts.skipSessionStart) {
+    if (parsed.musicXml) {
+      await session.startFromScore({
+        musicXml: parsed.musicXml,
+        sourceFileName,
+        edits: collectCurrentEdits(),
+        title: collectCurrentEdits().title || sourceFileName,
+        author: syncSettings.author,
+        notes: [],
+      });
+    } else {
+      session.pack = null;
+    }
+  }
+  renderNotes();
+  renderHistory();
+  updateSyncUi();
 
   const voiceWord = project.voices.length === 1 ? "voice" : "voices";
   let msg = `Loaded ${project.notes.length} notes · ${project.voices.length} ${voiceWord}`;
@@ -617,7 +876,10 @@ els.sheetZoomInBtn?.addEventListener("click", async () => {
 });
 
 els.sheetStaffLinesBtn?.addEventListener("click", () => {
-  void sheet.setShowStaffLines(!sheet.showStaffLines).then(() => updateSheetToolbar());
+  void sheet.setShowStaffLines(!sheet.showStaffLines).then(() => {
+    updateSheetToolbar();
+    void recordSharedEdit(sheet.showStaffLines ? "Show staff lines" : "Hide staff lines");
+  });
 });
 
 els.sheetSaveBtn?.addEventListener("click", () => {
@@ -718,14 +980,175 @@ document.addEventListener("keydown", (ev) => {
 
 // Kill hanging voices when the tab is backgrounded or closed.
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") synth.panic();
+  if (document.visibilityState === "hidden") {
+    synth.panic();
+    void persistSessionSnapshot();
+  }
 });
-window.addEventListener("pagehide", () => synth.panic());
+window.addEventListener("pagehide", () => {
+  synth.panic();
+  void persistSessionSnapshot();
+});
 
 window.addEventListener("beforeunload", (ev) => {
-  if (!sheet.dirty) return;
+  if (!sheet.dirty && !session.needsPush()) return;
   ev.preventDefault();
   ev.returnValue = "";
+});
+
+window.addEventListener("online", () => updateSyncUi());
+window.addEventListener("offline", () => updateSyncUi());
+
+els.syncSettingsToggle?.addEventListener("click", () => {
+  if (!els.syncSettings) return;
+  els.syncSettings.hidden = !els.syncSettings.hidden;
+});
+
+els.syncSettingsSave?.addEventListener("click", () => {
+  void readSyncSettingsFromForm().then(() => setStatus("Sync settings saved on this device."));
+});
+
+els.syncExportBtn?.addEventListener("click", async () => {
+  if (!session.pack) return;
+  await persistSessionSnapshot();
+  snapshotIntoPack(session.pack);
+  downloadPack(session.pack, sourceFileName || "score");
+  setStatus("Exported practice pack");
+});
+
+els.syncImportInput?.addEventListener("change", async () => {
+  const file = els.syncImportInput.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const pack = parsePracticePack(text);
+    await applyPackToPlayer(pack);
+    setStatus(`Imported pack r${pack.rev}`);
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  } finally {
+    els.syncImportInput.value = "";
+  }
+});
+
+els.syncUndoBtn?.addEventListener("click", async () => {
+  try {
+    const prev = await session.undo();
+    if (!prev) return;
+    await applyPackToPlayer(prev, {
+      remoteSha: session.remoteSha,
+      clearUndoStack: false,
+    });
+    setStatus(`Undo → r${prev.rev}`);
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
+});
+
+els.syncPullBtn?.addEventListener("click", async () => {
+  if (!session.pack) return;
+  try {
+    setStatus("Pulling…");
+    const remote = await pullRemote(syncSettings, session.pack.id);
+    if (!remote?.pack) {
+      setStatus("Nothing on remote yet — Push to create it.");
+      return;
+    }
+    const action = comparePacks(session.pack, remote.pack);
+    if (action === "same") {
+      session.remoteSha = remote.sha || session.remoteSha;
+      session.markSynced({ sha: remote.sha });
+      await session.persist();
+      updateSyncUi();
+      setStatus("Already up to date with remote.");
+      return;
+    }
+    if ((action === "push-local" || action === "conflict") && session.needsPush()) {
+      const ok = confirm(
+        "Local has unpushed changes. Pulling replaces this device with the remote pack. Export a backup first if unsure. Continue?",
+      );
+      if (!ok) {
+        setStatus("Pull cancelled.");
+        return;
+      }
+    }
+    await applyPackToPlayer(remote.pack, { remoteSha: remote.sha || null });
+    session.markSynced({ sha: remote.sha || null });
+    await session.persist();
+    updateSyncUi();
+    setStatus(`Pulled r${remote.pack.rev}`);
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
+});
+
+els.syncPushBtn?.addEventListener("click", async () => {
+  if (!session.pack) return;
+  try {
+    if (!navigator.onLine) {
+      setStatus("You're offline — changes stay on this device until you can Push.", true);
+      return;
+    }
+    await persistSessionSnapshot();
+    snapshotIntoPack(session.pack);
+    await session.persist();
+    if (!session.remoteSha) {
+      try {
+        const existing = await pullRemote(syncSettings, session.pack.id);
+        if (existing?.sha) session.remoteSha = existing.sha;
+      } catch {
+        /* create new file */
+      }
+    }
+    setStatus("Pushing…");
+    const result = await pushRemote(syncSettings, session.pack, {
+      sha: session.remoteSha || undefined,
+      message: `practice: ${session.pack.title || session.pack.id} r${session.pack.rev}`,
+    });
+    session.markSynced({ sha: result.sha || session.remoteSha });
+    await session.persist();
+    updateSyncUi();
+    setStatus(`Pushed r${session.pack.rev}`);
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
+});
+
+els.noteAddBtn?.addEventListener("click", () => {
+  const text = els.noteInput?.value.trim();
+  if (!text || !session.pack) return;
+  void session
+    .commit(
+      "Added note",
+      (pack) => {
+        snapshotIntoPack(pack);
+        pack.notes = [
+          ...(pack.notes || []),
+          {
+            id: newId("note"),
+            text,
+            author: syncSettings.author || "",
+            updatedAt: new Date().toISOString(),
+            tick: transport.playheadTick || null,
+          },
+        ];
+      },
+      syncSettings.author,
+    )
+    .then(() => {
+      if (els.noteInput) els.noteInput.value = "";
+      renderNotes();
+      renderHistory();
+      updateSyncUi();
+    })
+    .catch((err) => setStatus(err?.message || String(err), true));
+});
+
+els.noteInput?.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    els.noteAddBtn?.click();
+  }
 });
 
 window.addEventListener("beforeinstallprompt", (ev) => {
@@ -768,6 +1191,12 @@ if ("serviceWorker" in navigator) {
 
 if (els.appVersion) els.appVersion.textContent = APP_VERSION_LABEL;
 
+void loadSyncSettings().then((s) => {
+  syncSettings = s;
+  fillSyncSettingsForm();
+  updateSyncUi();
+});
+
 // Show install affordance even when beforeinstallprompt never fires (e.g. Safari).
 if (els.installBtn) {
   const isStandalone =
@@ -781,5 +1210,6 @@ setLoadedUi(false);
 updateTuningUi();
 updateScoreViewUi();
 updateAccompUi();
+updateSyncUi();
 roll.draw();
 setStatus("Ready — open a MIDI or MusicXML file to begin.");
