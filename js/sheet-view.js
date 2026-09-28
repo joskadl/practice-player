@@ -87,8 +87,12 @@ export class SheetView {
     this._ready = false;
     this.ticksPerBeat = 480;
     this.zoom = ZOOM_DEFAULT;
+    /** Note-onset timeline in OSMD whole-note time (rests excluded). */
     /** @type {{wn:number, tick:number}[]} */
     this._timeline = [];
+    /** Optional project onset ticks — used to snap the playhead to attacks. */
+    /** @type {number[]} */
+    this._onsetTicks = [];
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
   }
@@ -104,6 +108,7 @@ export class SheetView {
     this.instrumentVoices = [];
     this._ready = false;
     this._timeline = [];
+    this._onsetTicks = [];
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
     if (this.osmd) {
@@ -213,7 +218,9 @@ export class SheetView {
    * @param {{
    *   voices: {id:string, channel:number, partId?:string}[],
    *   isVoiceAudible:(id:string)=>boolean,
+   *   voiceGain?: (id:string)=>number,
    *   ticksPerBeat?: number,
+   *   onsetTicks?: number[],
    * }} opts
    */
   async load(xmlText, opts) {
@@ -224,6 +231,9 @@ export class SheetView {
     this._voiceGain =
       opts.voiceGain || ((id) => (this._isVoiceAudible(id) ? 1 : 0));
     this.ticksPerBeat = Math.max(1, opts.ticksPerBeat || 480);
+    this._onsetTicks = Array.isArray(opts.onsetTicks)
+      ? opts.onsetTicks.slice().sort((a, b) => a - b)
+      : [];
 
     const restore = this._prepareLayoutSurface();
     try {
@@ -293,6 +303,81 @@ export class SheetView {
     return this.setZoom(this.zoom + delta);
   }
 
+  /** Whole-note time → project ticks (quarter = ticksPerBeat). */
+  _wnToTick(wn) {
+    return Math.round(wn * 4 * this.ticksPerBeat);
+  }
+
+  _tickToWn(tick) {
+    return tick / (4 * this.ticksPerBeat);
+  }
+
+  /**
+   * True when the iterator sits on at least one pitched (non-rest) note.
+   * Matches OSMD's moveToNextVisibleVoiceEntry(notesOnly=true) check.
+   */
+  _iteratorHasPitchedNote(iterator) {
+    const entries =
+      iterator?.CurrentVoiceEntries ||
+      iterator?.currentVoiceEntries ||
+      [];
+    for (const ve of entries) {
+      const notes = ve?.Notes || ve?.notes || [];
+      for (const note of notes) {
+        if (!note) continue;
+        const isRest =
+          typeof note.isRest === "function" ? note.isRest() : !!note.isRest;
+        if (isRest) continue;
+        if (note.Pitch || note.pitch || note.halfTone != null || note.HalfTone != null) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Reset OSMD cursor, then land on the first pitched-note entry. */
+  _resetCursorToFirstNote() {
+    const cursor = this.osmd?.cursor;
+    if (!cursor) return;
+    cursor.reset();
+    this._cursorIdx = 0;
+    // reset() may land on a rest / empty slice — skip to first pitched note.
+    if (!iteratorEnded(cursor.iterator) && !this._iteratorHasPitchedNote(cursor.iterator)) {
+      this._advanceCursorNotesOnly();
+      this._cursorIdx = 0;
+    }
+    try {
+      cursor.update();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Advance one step among pitched notes only (skip rest-only slices).
+   * Public cursor.next() uses notesOnly=false and splits bars on rests.
+   */
+  _advanceCursorNotesOnly() {
+    const cursor = this.osmd?.cursor;
+    const it = cursor?.iterator;
+    if (!cursor || !it || iteratorEnded(it)) return false;
+    if (typeof it.moveToNextVisibleVoiceEntry === "function") {
+      it.moveToNextVisibleVoiceEntry(true);
+    } else {
+      // Fallback: walk next() until a pitched note appears.
+      do {
+        cursor.next();
+      } while (!iteratorEnded(cursor.iterator) && !this._iteratorHasPitchedNote(cursor.iterator));
+    }
+    try {
+      cursor.update();
+    } catch {
+      /* ignore */
+    }
+    return !iteratorEnded(cursor.iterator);
+  }
+
   _buildTimeline() {
     this._timeline = [];
     this._cursorIdx = 0;
@@ -300,18 +385,21 @@ export class SheetView {
     if (!cursor) return;
     try {
       cursor.show();
-      cursor.reset();
+      this._resetCursorToFirstNote();
       let guard = 0;
       while (!iteratorEnded(cursor.iterator) && guard++ < 200000) {
-        const wn = fractionReal(cursor.iterator.currentTimeStamp);
-        this._timeline.push({
-          wn,
-          tick: Math.round(wn * this.ticksPerBeat * 4),
-        });
-        cursor.next();
+        if (this._iteratorHasPitchedNote(cursor.iterator)) {
+          const wn = fractionReal(
+            cursor.iterator.currentTimeStamp ?? cursor.iterator.CurrentTimestamp,
+          );
+          this._timeline.push({
+            wn,
+            tick: this._wnToTick(wn),
+          });
+        }
+        if (!this._advanceCursorNotesOnly()) break;
       }
-      cursor.reset();
-      cursor.update();
+      this._resetCursorToFirstNote();
       this._ensureCursorVisible();
     } catch {
       this._timeline = [];
@@ -319,7 +407,31 @@ export class SheetView {
   }
 
   /**
-   * Move OSMD cursor to the staff entry at/before ``tick`` and optionally scroll.
+   * Snap transport tick to the onset that is currently sounding (last onset ≤ tick).
+   * Keeps the cursor on note attacks instead of interpolating through the bar.
+   */
+  _activeOnsetTick(tick) {
+    const t = tick | 0;
+    if (!this._onsetTicks.length) return t;
+    let lo = 0;
+    let hi = this._onsetTicks.length - 1;
+    let best = this._onsetTicks[0];
+    if (t < best) return best;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const v = this._onsetTicks[mid];
+      if (v <= t) {
+        best = v;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Move OSMD cursor to the pitched note entry for the active onset at ``tick``.
    * @param {number} tick
    * @param {{scroll?: boolean}} [opts]
    */
@@ -340,18 +452,21 @@ export class SheetView {
     }
     if (!this._timeline.length) return;
 
+    const onsetTick = this._activeOnsetTick(this._lastPlayheadTick);
+    const targetWn = this._tickToWn(onsetTick);
+
+    // Prefer whole-note compare (stable vs OSMD Fraction timestamps).
     let idx = 0;
     for (let i = 0; i < this._timeline.length; i++) {
-      if (this._timeline[i].tick <= this._lastPlayheadTick) idx = i;
+      if (this._timeline[i].wn <= targetWn + 1e-9) idx = i;
       else break;
     }
 
     if (idx < this._cursorIdx) {
-      cursor.reset();
-      this._cursorIdx = 0;
+      this._resetCursorToFirstNote();
     }
     while (this._cursorIdx < idx && !iteratorEnded(cursor.iterator)) {
-      cursor.next();
+      if (!this._advanceCursorNotesOnly()) break;
       this._cursorIdx += 1;
     }
     try {

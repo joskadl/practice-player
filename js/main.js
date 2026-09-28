@@ -203,7 +203,7 @@ function updateScoreViewUi() {
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
   els.scoreHeading.textContent = showSheet ? "Sheet music" : "Piano roll";
   els.scoreHint.textContent = showSheet
-    ? "Red cursor follows playback / onset skips. Use − / + to zoom. Mute/solo colours mark parts."
+    ? "Red cursor sits on the sounding note onset. Use − / + to zoom. Mute/solo colours mark parts."
     : hasSheet
       ? "Click the timeline to seek. Switch to Sheet music for the score. Mute/solo colours apply in both views."
       : "Click the timeline to seek. Arrow keys skip onsets. Load MusicXML for sheet music.";
@@ -351,6 +351,7 @@ async function applyProject(parsed, fileName) {
       isVoiceAudible: voiceAudible,
       voiceGain,
       ticksPerBeat: project.ticksPerBeat,
+      onsetTicks: project.onsetTicks || [],
     });
     scoreView = "sheet";
     updateSheetZoomLabel();
