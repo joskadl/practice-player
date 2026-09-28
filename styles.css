@@ -329,7 +329,7 @@ select {
 
 .voice-list li {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  grid-template-columns: auto auto auto 1fr auto;
   gap: 0.55rem;
   align-items: center;
   padding: 0.45rem 0.55rem;
@@ -344,6 +344,32 @@ select {
 
 .voice-list li.accomp {
   opacity: 0.78;
+}
+
+.voice-list li.voice-hidden {
+  opacity: 0.48;
+}
+
+.voice-list li.voice-hidden .voice-name-label {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.voice-vis-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.3rem 0.4rem;
+  line-height: 0;
+}
+
+.voice-vis-btn[aria-pressed="true"] {
+  color: #6b7280;
+}
+
+.voice-vis-icon {
+  display: block;
 }
 
 .voice-list .meta {
@@ -414,6 +440,67 @@ select {
   align-items: center;
   gap: 0.25rem;
   margin-left: 0.35rem;
+}
+
+.sheet-annot-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.45rem;
+}
+
+.annot-toggles,
+.annot-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.annot-toggle[aria-pressed="false"] {
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.annot-add button[aria-pressed="true"] {
+  background: var(--accent, #2f5d50);
+  color: #fff;
+  border-color: var(--accent, #2f5d50);
+}
+
+.sheet-music.pp-annot-chord,
+.sheet-music.pp-annot-note {
+  cursor: crosshair;
+}
+
+.sheet-music.pp-hide-staves .vf-stavenote,
+.sheet-music.pp-hide-staves .vf-note,
+.sheet-music.pp-hide-staves .vf-notehead,
+.sheet-music.pp-hide-staves .vf-stem,
+.sheet-music.pp-hide-staves .vf-beam,
+.sheet-music.pp-hide-staves .vf-flag,
+.sheet-music.pp-hide-staves .vf-clef,
+.sheet-music.pp-hide-staves .vf-keysignature,
+.sheet-music.pp-hide-staves .vf-timesignature,
+.sheet-music.pp-hide-staves .vf-modifiers,
+.sheet-music.pp-hide-staves .staffline line {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.sheet-music.pp-hide-lyrics .lyrics,
+.sheet-music.pp-hide-lyrics .dash {
+  display: none !important;
+}
+
+.sheet-music.pp-hide-chords .pp-chord {
+  display: none !important;
+}
+
+.sheet-music.pp-hide-notes .pp-annot-note {
+  display: none !important;
 }
 
 .sheet-zoom button {
@@ -595,7 +682,7 @@ button.swatch {
 
 @media (max-width: 560px) {
   .voice-list li {
-    grid-template-columns: auto auto 1fr;
+    grid-template-columns: auto auto auto 1fr;
   }
   .voice-list .meta {
     grid-column: 1 / -1;

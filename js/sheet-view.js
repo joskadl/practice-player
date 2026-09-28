@@ -5,16 +5,24 @@
 
 import { channelColor } from "./piano-roll.js";
 import { readMusicXmlMeta, applyMusicXmlEdits } from "./musicxml-edit.js";
+import {
+  DEFAULT_LAYERS,
+  PRACTICE_NOTE_COLOR,
+  readAnnotationLayers,
+  writeAnnotationLayers,
+  insertHarmonyAtTick,
+  insertDirectionWordsAtTick,
+} from "./musicxml-annotate.js";
 
 const MUTED_COLOR = "#b0b0b0";
 const WIDTH_FALLBACK = 640;
 const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 2.25;
 const ZOOM_DEFAULT = 0.55;
-/** OSMD unit → CSS px factor (see Cursor.updateWidthAndStyle). */
-const OSMD_UNIT = 10;
-/** Gap before notehead (OSMD units) so the bar sits just left of the head. */
-const CURSOR_HEAD_GAP = 0.35;
+/** Pixel gap between cursor bar and leftmost notehead under the cursor. */
+const CURSOR_HEAD_GAP_PX = 3;
+/** Max click distance (px) from a notehead to count as a seek target. */
+const SEEK_HIT_MAX_PX = 72;
 
 function mixHex(a, b, t) {
   const parse = (hex) => {
@@ -89,6 +97,7 @@ export class SheetView {
     this.instrumentVoices = [];
     this._isVoiceAudible = () => true;
     this._voiceGain = (id) => (this._isVoiceAudible(id) ? 1 : 0);
+    this._isVoiceVisible = () => true;
     this._ready = false;
     this.ticksPerBeat = 480;
     this.zoom = ZOOM_DEFAULT;
@@ -106,10 +115,23 @@ export class SheetView {
     this.onDirtyChange = null;
     /** @type {((partId:string, name:string)=>void)|null} */
     this.onPartRename = null;
+    /** @type {((tick:number)=>void)|null} */
+    this.onSeek = null;
+    /** @type {((xml:string, label:string)=>void|Promise<void>)|null} */
+    this.onXmlMutated = null;
+    /** @type {((layers:object)=>void)|null} */
+    this.onLayersChange = null;
+    /** @type {((mode:string|null)=>void)|null} */
+    this.onAnnotModeChange = null;
     /** @type {((voice:{id:string,channel?:number,partId?:string})=>string)|null} */
     this.voiceColor = null;
     this._editInput = null;
     this._editCtx = null;
+    /** @type {{staves:boolean, lyrics:boolean, chords:boolean, notes:boolean}} */
+    this.layers = { ...DEFAULT_LAYERS };
+    /** @type {null|"chord"|"note"} */
+    this.annotMode = null;
+    this.container.addEventListener("click", (ev) => this._onContainerClick(ev));
   }
 
   async ensure() {
@@ -128,7 +150,16 @@ export class SheetView {
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
     this._pending = null;
+    this.annotMode = null;
     this._setDirty(false);
+    this.container.classList.remove(
+      "pp-hide-staves",
+      "pp-hide-lyrics",
+      "pp-hide-chords",
+      "pp-hide-notes",
+      "pp-annot-chord",
+      "pp-annot-note",
+    );
     if (this.osmd) {
       try {
         this.osmd.clear();
@@ -226,13 +257,20 @@ export class SheetView {
    */
   buildEditedXml() {
     if (!this.xml) return "";
-    return applyMusicXmlEdits(this.xml, this.getEdits());
+    let xml = applyMusicXmlEdits(this.xml, this.getEdits());
+    xml = writeAnnotationLayers(xml, this.layers);
+    return xml;
   }
 
   markSaved(xmlText) {
     this.xml = xmlText;
     this._pending = null;
     this._setDirty(false);
+  }
+
+  /** Mark the score as having unsaved edits (e.g. after annotation insert). */
+  markDirty() {
+    this._setDirty(true);
   }
 
   getZoom() {
@@ -365,9 +403,16 @@ export class SheetView {
     if (wasHidden) this.container.hidden = false;
     this._applyCursorStyle();
     this._applyStaffLineRules();
+    this._applyLayerEngravingRules();
     this.osmd.zoom = this.zoom;
+    try {
+      if (typeof this.osmd.updateGraphic === "function") this.osmd.updateGraphic();
+    } catch {
+      /* ignore */
+    }
     this.osmd.render();
     this.applyVoiceVisibility();
+    this._finishAnnotationPresentation();
     this._buildTimeline();
     this._bindInlineEditors();
     this.setPlayhead(this._lastPlayheadTick, { scroll });
@@ -384,6 +429,7 @@ export class SheetView {
    *   voices: {id:string, channel:number, partId?:string}[],
    *   isVoiceAudible:(id:string)=>boolean,
    *   voiceGain?: (id:string)=>number,
+   *   isVoiceVisible?: (id:string)=>boolean,
    *   ticksPerBeat?: number,
    *   onsetTicks?: number[],
    * }} opts
@@ -395,6 +441,7 @@ export class SheetView {
     this._isVoiceAudible = opts.isVoiceAudible || (() => true);
     this._voiceGain =
       opts.voiceGain || ((id) => (this._isVoiceAudible(id) ? 1 : 0));
+    this._isVoiceVisible = opts.isVoiceVisible || (() => true);
     this.ticksPerBeat = Math.max(1, opts.ticksPerBeat || 480);
     this._onsetTicks = Array.isArray(opts.onsetTicks)
       ? opts.onsetTicks.slice().sort((a, b) => a - b)
@@ -422,14 +469,23 @@ export class SheetView {
 
       await this.osmd.load(xmlText);
       this.osmd.zoom = this.zoom;
+      this.layers = readAnnotationLayers(xmlText);
       this._applyStaffLineRules();
+      this._applyLayerEngravingRules();
+      try {
+        if (typeof this.osmd.updateGraphic === "function") this.osmd.updateGraphic();
+      } catch {
+        /* ignore */
+      }
       this.osmd.render();
       this._mapInstruments(opts.voices || []);
       this.applyVoiceVisibility();
+      this._finishAnnotationPresentation();
       this._buildTimeline();
       this._bindInlineEditors();
       this._ready = true;
       this.setPlayhead(opts.playheadTick ?? 0, { scroll: false });
+      if (typeof this.onLayersChange === "function") this.onLayersChange({ ...this.layers });
     } finally {
       restore();
     }
@@ -453,7 +509,7 @@ export class SheetView {
       this.osmd.zoom = zoom;
       await this._rerenderKeepPlayhead({ scroll: true });
     }
-    if (!wasDirty) this._setDirty(false);
+    this._setDirty(wasDirty);
   }
 
   async revealAndRender() {
@@ -703,65 +759,363 @@ export class SheetView {
       this._cursorIdx += 1;
     }
     try {
-      // Let OSMD place the cursor using its own AbsolutePosition math (per system/bar).
+      // Let OSMD place the cursor in the correct system first.
       cursor.update();
     } catch {
       /* ignore */
     }
-    // Nudge just left of the notehead column using the same OSMD unit space — never
-    // mix in getBoundingClientRect (that reused wrong coords across systems/bars).
-    this._nudgeCursorToEntryAnchor();
+    // Align the bar to the painted noteheads under the cursor (DOM), not OSMD units.
+    this._nudgeCursorToNoteheads();
     this._ensureCursorVisible();
     if (scroll) this._scrollCursorIntoView();
   }
 
   /**
-   * Leftmost reliable staff-entry / notehead x in OSMD units under the cursor.
+   * Client-space bounds for pitched noteheads currently under the OSMD cursor.
+   * @returns {{left:number, top:number, bottom:number}|null} container-content coords
    */
-  _entryAnchorX() {
+  _noteheadsBoundsUnderCursor() {
     const cursor = this.osmd?.cursor;
-    const it = cursor?.iterator;
-    if (!cursor || !it) return null;
-
-    let minX = null;
-    const consider = (x) => {
-      if (typeof x === "number" && Number.isFinite(x)) {
-        minX = minX == null ? x : Math.min(minX, x);
-      }
-    };
-
+    if (!cursor) return null;
+    let minLeft = null;
+    let minTop = null;
+    let maxBottom = null;
+    const host = this.container.getBoundingClientRect();
     try {
-      const voiceEntries =
-        typeof it.CurrentVisibleVoiceEntries === "function"
-          ? it.CurrentVisibleVoiceEntries()
-          : it.CurrentVoiceEntries || it.currentVoiceEntries || [];
-      for (const ve of voiceEntries || []) {
-        if (typeof cursor.getStaffEntryFromVoiceEntry === "function") {
-          const gse = cursor.getStaffEntryFromVoiceEntry(ve);
-          consider(gse?.PositionAndShape?.AbsolutePosition?.x);
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const src = gn?.sourceNote || gn?.getSourceNote?.();
+        const isRest =
+          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
+        if (isRest) continue;
+        const instrIndex = this._instrumentIndexFromNote(gn);
+        const voice = this.instrumentVoices[instrIndex];
+        if (voice && typeof this._isVoiceVisible === "function" && !this._isVoiceVisible(voice.id)) {
+          continue;
+        }
+        const svg = gn?.getSVGGElement?.() || gn?.svggElement;
+        if (!svg || typeof svg.getBoundingClientRect !== "function") continue;
+        const r = svg.getBoundingClientRect();
+        if (!(r.width > 0 || r.height > 0)) continue;
+        // Hidden notes may still have layout boxes — skip non-visible elements.
+        const st = globalThis.getComputedStyle?.(svg);
+        if (st && (st.visibility === "hidden" || st.opacity === "0")) continue;
+        const left = r.left - host.left + this.container.scrollLeft;
+        const top = r.top - host.top + this.container.scrollTop;
+        const bottom = r.bottom - host.top + this.container.scrollTop;
+        minLeft = minLeft == null ? left : Math.min(minLeft, left);
+        minTop = minTop == null ? top : Math.min(minTop, top);
+        maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
+      }
+    } catch {
+      return null;
+    }
+    if (minLeft == null) return null;
+    return { left: minLeft, top: minTop ?? 0, bottom: maxBottom ?? minTop ?? 0 };
+  }
+
+  /**
+   * Place the cursor bar just left of the painted noteheads for the current entry.
+   */
+  _nudgeCursorToNoteheads() {
+    const el = this.osmd?.cursor?.cursorElement;
+    if (!el) return;
+    const bounds = this._noteheadsBoundsUnderCursor();
+    if (!bounds) return;
+    el.style.left = `${Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX)}px`;
+  }
+
+  /**
+   * Click: place annotation in add-mode, otherwise seek.
+   */
+  _onContainerClick(ev) {
+    if (!this._ready) return;
+    if (this._editInput) return;
+    const t = ev.target;
+    if (t?.closest?.(".sheet-inline-edit") || t?.closest?.("[data-pp-edit]")) return;
+    if (t?.closest?.("img.osmd-cursor") || t?.classList?.contains?.("cursor")) return;
+
+    const hit = this._nearestOnsetAtClient(ev.clientX, ev.clientY);
+    if (!hit) return;
+    ev.preventDefault();
+
+    if (this.annotMode === "chord" || this.annotMode === "note") {
+      void this._placeAnnotationAtTick(this.annotMode, hit.tick);
+      return;
+    }
+
+    if (typeof this.onSeek === "function") this.onSeek(hit.tick);
+  }
+
+  /**
+   * @param {null|"chord"|"note"} mode
+   */
+  setAnnotMode(mode) {
+    const next = mode === "chord" || mode === "note" ? mode : null;
+    this.annotMode = next;
+    this.container.classList.toggle("pp-annot-chord", next === "chord");
+    this.container.classList.toggle("pp-annot-note", next === "note");
+    if (typeof this.onAnnotModeChange === "function") this.onAnnotModeChange(next);
+  }
+
+  getLayers() {
+    return { ...this.layers };
+  }
+
+  /**
+   * Toggle which score layers are drawn. Persisted into MusicXML on save.
+   * @param {Partial<{staves:boolean, lyrics:boolean, chords:boolean, notes:boolean}>} partial
+   */
+  async setLayers(partial = {}) {
+    this.layers = { ...this.layers, ...partial };
+    if (this.xml) {
+      try {
+        // Keep base xml layers in sync without wiping pending title/part edits.
+        this.xml = writeAnnotationLayers(this.xml, this.layers);
+      } catch {
+        /* ignore */
+      }
+      this._setDirty(true);
+    }
+    if (typeof this.onLayersChange === "function") this.onLayersChange({ ...this.layers });
+    if (this.osmd && this._ready) {
+      await this._rerenderKeepPlayhead({ scroll: false });
+    }
+  }
+
+  _applyLayerEngravingRules() {
+    if (!this.osmd?.EngravingRules) return;
+    try {
+      const rules = this.osmd.EngravingRules;
+      rules.RenderLyrics = !!this.layers.lyrics;
+      rules.RenderChordSymbols = !!this.layers.chords;
+      if (!this.layers.staves) {
+        rules.StaffLineWidth = 0;
+        rules.LedgerLineWidth = 0;
+        if (typeof rules.BetweenStaffDistance === "number") {
+          rules.BetweenStaffDistance = Math.min(rules.BetweenStaffDistance || 5, 2.2);
+        }
+      } else if (this.showStaffLines) {
+        rules.StaffLineWidth = 0.1;
+        rules.LedgerLineWidth = 1;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  _finishAnnotationPresentation() {
+    this._tagAnnotationSvg();
+    this.container.classList.toggle("pp-hide-staves", !this.layers.staves);
+    this.container.classList.toggle("pp-hide-lyrics", !this.layers.lyrics);
+    this.container.classList.toggle("pp-hide-chords", !this.layers.chords);
+    this.container.classList.toggle("pp-hide-notes", !this.layers.notes);
+  }
+
+  /**
+   * Mark chord labels and practice-note words in the SVG for CSS show/hide.
+   */
+  _tagAnnotationSvg() {
+    const svg = this.container.querySelector("svg");
+    if (!svg) return;
+
+    // Lyrics already have class "lyrics" from OSMD.
+    // Tag chord symbols from OSMD graphical objects when available.
+    try {
+      const graphic = this.osmd?.graphic;
+      const measureList = graphic?.measureList || [];
+      for (const staffMeasures of measureList) {
+        for (const gMeasure of staffMeasures || []) {
+          const entries = gMeasure?.staffEntries || [];
+          for (const entry of entries) {
+            const containers =
+              entry.graphicalChordContainers || entry.GraphicalChordContainers || [];
+            for (const c of containers) {
+              const label = c?.GraphicalLabel || c?.graphicalLabel;
+              const node = label?.SVGNode || label?.svgNode;
+              if (node) node.classList?.add("pp-chord");
+            }
+          }
         }
       }
     } catch {
       /* ignore */
     }
 
-    // Prefer painted notehead anchors when present (onset of the head, not the stem).
-    const headX = this._leftmostNoteheadX();
-    if (headX != null) return headX;
-    return minX;
+    // Practice notes + chords use distinctive colours written into MusicXML.
+    const noteColor = PRACTICE_NOTE_COLOR.toLowerCase();
+    const chordColor = "#334155";
+    for (const el of svg.querySelectorAll("text, tspan")) {
+      const fill = (el.getAttribute("fill") || el.style?.fill || "").toLowerCase();
+      if (!fill || fill === "none" || fill === "#000000" || fill === "black") continue;
+      if (fill === noteColor || fill.includes("1a6b5c")) {
+        el.classList.add("pp-annot-note");
+        el.closest("g")?.classList.add("pp-annot-note");
+      } else if (fill === chordColor || fill.includes("334155")) {
+        el.classList.add("pp-chord");
+        el.closest("g")?.classList.add("pp-chord");
+      }
+    }
   }
 
   /**
-   * Place the cursor image just before the current entry using OSMD page coordinates.
+   * @param {"chord"|"note"} kind
+   * @param {number} tick
    */
-  _nudgeCursorToEntryAnchor() {
-    const el = this.osmd?.cursor?.cursorElement;
-    if (!el) return;
-    const xUnit = this._entryAnchorX();
-    if (xUnit == null) return;
-    // Match OSMD ThinLeft scaling; small gap so the bar sits at the note onset.
-    const leftPx = (xUnit - CURSOR_HEAD_GAP) * OSMD_UNIT * this.zoom;
-    el.style.left = `${Math.max(0, leftPx)}px`;
+  async _placeAnnotationAtTick(kind, tick) {
+    const promptLabel =
+      kind === "chord" ? "Chord symbol (e.g. Am, G7, Fmaj7)" : "Performance note text";
+    const def = kind === "chord" ? "C" : "";
+    const value = globalThis.prompt?.(promptLabel, def);
+    this.setAnnotMode(null);
+    if (value == null) return;
+    const text = String(value).trim();
+    if (!text) return;
+
+    let baseXml = this.dirty ? this.buildEditedXml() : this.xml;
+    if (!baseXml) return;
+    // buildEditedXml already writes layers; for clean xml write layers too.
+    if (!this.dirty) baseXml = writeAnnotationLayers(baseXml, this.layers);
+
+    let nextXml;
+    try {
+      nextXml =
+        kind === "chord"
+          ? insertHarmonyAtTick(baseXml, tick, text)
+          : insertDirectionWordsAtTick(baseXml, tick, text);
+    } catch (err) {
+      console.warn(err);
+      return;
+    }
+
+    this._setDirty(true);
+    if (typeof this.onSeek === "function") this.onSeek(tick);
+    if (typeof this.onXmlMutated === "function") {
+      await this.onXmlMutated(nextXml, kind === "chord" ? `Chord ${text}` : `Note: ${text}`);
+    }
+  }
+
+  /**
+   * Find the pitched note nearest to a client point and map it to a transport tick.
+   * @returns {{tick:number, wn:number}|null}
+   */
+  _nearestOnsetAtClient(clientX, clientY) {
+    if (!this.osmd?.graphic) return null;
+    const graphic = this.osmd.graphic;
+    const measureList = graphic.measureList || [];
+    let bestWn = null;
+    let bestScore = Infinity;
+
+    for (let staffIndex = 0; staffIndex < measureList.length; staffIndex++) {
+      const staffMeasures = measureList[staffIndex] || [];
+      for (const gMeasure of staffMeasures) {
+        if (!gMeasure) continue;
+        const staffEntries = gMeasure.staffEntries || [];
+        for (const entry of staffEntries) {
+          const gNotes = entry.graphicalVoiceEntries
+            ? entry.graphicalVoiceEntries.flatMap((ve) => ve.notes || [])
+            : entry.graphicalNotes || [];
+          for (const gNote of gNotes) {
+            const src = gNote?.sourceNote || gNote?.getSourceNote?.();
+            if (!src) continue;
+            const isRest =
+              typeof src.isRest === "function" ? src.isRest() : !!src.isRest;
+            if (isRest) continue;
+
+            const instrIndex = this._instrumentIndexFromNote(gNote) ?? staffIndex;
+            const voice =
+              this.instrumentVoices[instrIndex] || this._voiceForStaffIndex(staffIndex);
+            if (
+              typeof this._isVoiceVisible === "function" &&
+              !this._isVoiceVisible(voice.id)
+            ) {
+              continue;
+            }
+
+            const svg = gNote.getSVGGElement?.() || gNote.svggElement;
+            if (!svg || typeof svg.getBoundingClientRect !== "function") continue;
+            const r = svg.getBoundingClientRect();
+            if (!(r.width > 0 || r.height > 0)) continue;
+
+            const nx = r.left + Math.min(r.width * 0.25, 8);
+            const ny = (r.top + r.bottom) / 2;
+            const score = Math.hypot(clientX - nx, (clientY - ny) * 1.6);
+            if (score >= bestScore || score > SEEK_HIT_MAX_PX) continue;
+
+            const wn = this._timestampOfGraphicalNote(gNote, entry, gMeasure);
+            if (wn == null) continue;
+            bestScore = score;
+            bestWn = wn;
+          }
+        }
+      }
+    }
+
+    if (bestWn == null) return null;
+
+    let tick = this._wnToTick(bestWn);
+    if (this._timeline.length) {
+      let closest = this._timeline[0];
+      let closestD = Math.abs(closest.wn - bestWn);
+      for (const slice of this._timeline) {
+        const d = Math.abs(slice.wn - bestWn);
+        if (d < closestD) {
+          closest = slice;
+          closestD = d;
+        }
+      }
+      tick = closest.tick;
+    } else if (this._onsetTicks.length) {
+      tick = this._activeOnsetTick(tick);
+    }
+    return { tick, wn: bestWn };
+  }
+
+  /**
+   * Whole-note timestamp for a graphical note (absolute in the piece).
+   * @returns {number|null}
+   */
+  _timestampOfGraphicalNote(gNote, entry, gMeasure) {
+    try {
+      if (typeof entry?.getAbsoluteTimestamp === "function") {
+        return fractionReal(entry.getAbsoluteTimestamp());
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      const src = gNote?.sourceNote || gNote?.getSourceNote?.();
+      const ts =
+        src?.getAbsoluteTimestamp?.() ||
+        src?.AbsoluteTimestamp ||
+        src?.absoluteTimestamp ||
+        src?.ParentVoiceEntry?.Timestamp ||
+        src?.parentVoiceEntry?.Timestamp;
+      if (ts != null) {
+        // Voice-entry Timestamp is often relative to the measure.
+        const measureAbs =
+          gMeasure?.parentSourceMeasure?.AbsoluteTimestamp ||
+          gMeasure?.parentSourceMeasure?.absoluteTimestamp ||
+          src?.SourceMeasure?.AbsoluteTimestamp ||
+          src?.sourceMeasure?.AbsoluteTimestamp;
+        if (measureAbs != null && !src?.AbsoluteTimestamp && !src?.getAbsoluteTimestamp) {
+          return fractionReal(measureAbs) + fractionReal(ts);
+        }
+        return fractionReal(ts);
+      }
+      if (entry?.relInMeasureTimestamp != null) {
+        const measureAbs =
+          gMeasure?.parentSourceMeasure?.AbsoluteTimestamp ||
+          gMeasure?.parentSourceMeasure?.absoluteTimestamp;
+        if (measureAbs != null) {
+          return fractionReal(measureAbs) + fractionReal(entry.relInMeasureTimestamp);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
   }
 
   _scrollCursorIntoView() {
@@ -803,7 +1157,49 @@ export class SheetView {
   }
 
   applyVoiceVisibility() {
-    if (!this.osmd?.graphic) return;
+    if (!this.osmd?.Sheet) return;
+    const instruments = this.osmd.Sheet.Instruments || [];
+    let layoutChanged = false;
+    for (let i = 0; i < instruments.length; i++) {
+      const instr = instruments[i];
+      if (!instr) continue;
+      const voice = this.instrumentVoices[i];
+      const want =
+        !voice ||
+        typeof this._isVoiceVisible !== "function" ||
+        this._isVoiceVisible(voice.id);
+      if (instr.Visible !== want) {
+        instr.Visible = want;
+        layoutChanged = true;
+      }
+      const staves = instr.Staves || instr.staves || [];
+      for (const staff of staves) {
+        if (staff && staff.Visible !== want) {
+          staff.Visible = want;
+          layoutChanged = true;
+        }
+      }
+    }
+
+    if (layoutChanged && this.osmd.graphic) {
+      try {
+        this._applyLayerEngravingRules();
+        if (typeof this.osmd.updateGraphic === "function") this.osmd.updateGraphic();
+        this.osmd.render();
+      } catch {
+        /* ignore */
+      }
+      this._finishAnnotationPresentation();
+      this._buildTimeline();
+      this._bindInlineEditors();
+      if (this._ready) {
+        this.setPlayhead(this._lastPlayheadTick, { scroll: false });
+      }
+    } else {
+      this._finishAnnotationPresentation();
+    }
+
+    if (!this.osmd.graphic) return;
     const graphic = this.osmd.graphic;
     const measureList = graphic.measureList || [];
     for (let staffIndex = 0; staffIndex < measureList.length; staffIndex++) {
@@ -870,6 +1266,9 @@ export class SheetView {
     try {
       const el = gNote.getSVGGElement?.() || gNote.svggElement;
       if (el) {
+        el.style.visibility = "";
+        el.style.opacity = "";
+        el.style.pointerEvents = "";
         el.querySelectorAll("path, polygon, rect, ellipse, circle, text").forEach((node) => {
           node.setAttribute("fill", color);
           if (node.getAttribute("stroke") && node.getAttribute("stroke") !== "none") {

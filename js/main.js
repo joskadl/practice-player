@@ -30,6 +30,11 @@ import {
 import { pullRemote, pushRemote, syncConfigured } from "./sync-remote.js";
 import { ProjectSession } from "./project-session.js";
 
+const EYE_ICON =
+  '<svg class="voice-vis-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M12 5c-5 0-9.3 3.1-11 7 1.7 3.9 6 7 11 7s9.3-3.1 11-7c-1.7-3.9-6-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg>';
+const EYE_SLASH_ICON =
+  '<svg class="voice-vis-icon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3.3 2.2 2.2 3.3l3.1 3.1C3.4 8 1.8 9.8 1 12c1.7 3.9 6 7 11 7 1.7 0 3.3-.4 4.7-1l3 3 1.1-1.1L3.3 2.2zM12 17c-3.7 0-6.9-2-8.5-5 .7-1.4 1.9-2.7 3.4-3.6l1.7 1.7A5 5 0 0 0 12 17zm0-10c3.7 0 6.9 2 8.5 5-.5 1-1.2 1.9-2.1 2.7l1.5 1.5c1.3-1.2 2.3-2.6 2.9-4.2-1.7-3.9-6-7-11-7-1.2 0-2.3.2-3.4.5l1.6 1.6c.6-.1 1.2-.1 1.8-.1zm-1.1 4.3 2.8 2.8a2.5 2.5 0 0 1-2.8-2.8z"/></svg>';
+
 const els = {
   fileInput: document.getElementById("fileInput"),
   fileName: document.getElementById("fileName"),
@@ -56,6 +61,13 @@ const els = {
   sheetZoomInBtn: document.getElementById("sheetZoomInBtn"),
   sheetZoomLabel: document.getElementById("sheetZoomLabel"),
   sheetSaveBtn: document.getElementById("sheetSaveBtn"),
+  sheetAnnotBar: document.getElementById("sheetAnnotBar"),
+  layerStavesBtn: document.getElementById("layerStavesBtn"),
+  layerLyricsBtn: document.getElementById("layerLyricsBtn"),
+  layerChordsBtn: document.getElementById("layerChordsBtn"),
+  layerNotesBtn: document.getElementById("layerNotesBtn"),
+  addChordBtn: document.getElementById("addChordBtn"),
+  addNoteBtn: document.getElementById("addNoteBtn"),
   scoreHeading: document.getElementById("scoreHeading"),
   scoreHint: document.getElementById("scoreHint"),
   accompRow: document.getElementById("accompRow"),
@@ -314,9 +326,30 @@ async function applyPackToPlayer(pack, { remoteSha = null, clearUndoStack = true
   updateSyncUi();
 }
 sheet.voiceColor = (voice) => resolveVoiceColor(voice);
+sheet.onSeek = (tick) => seekTo(tick);
+sheet.onLayersChange = (layers) => syncAnnotBar(layers);
+sheet.onAnnotModeChange = (mode) => syncAnnotModeButtons(mode);
+sheet.onXmlMutated = async (xml, label) => {
+  if (!project) return;
+  project.musicXml = xml;
+  await sheet.reloadXml(xml, {
+    voices: project.voices,
+    isVoiceAudible: voiceAudible,
+    voiceGain,
+    isVoiceVisible: voiceVisible,
+    ticksPerBeat: project.ticksPerBeat,
+    onsetTicks: project.onsetTicks || [],
+  });
+  sheet.markDirty();
+  updateSheetToolbar();
+  syncAnnotBar(sheet.getLayers());
+  if (label) void recordSharedEdit(label);
+};
 
 const muted = new Set();
 const solo = new Set();
+/** Voices hidden from piano roll + sheet (audio still follows mute/solo). */
+const hiddenVoices = new Set();
 let project = null;
 /** @type {"roll"|"sheet"} */
 let scoreView = "roll";
@@ -364,8 +397,16 @@ function voiceAudible(voiceId) {
   return voiceGain(voiceId) > 0.001;
 }
 
+function voiceVisible(voiceId) {
+  return !hiddenVoices.has(voiceId);
+}
+
 function noteAudible(note) {
   return voiceAudible(note.voiceId);
+}
+
+function noteVisible(note) {
+  return voiceVisible(note.voiceId);
 }
 
 function noteGain(note) {
@@ -409,6 +450,33 @@ function updateSheetToolbar() {
   if (els.sheetSaveBtn) els.sheetSaveBtn.hidden = !sheet.dirty;
 }
 
+function syncAnnotBar(layers) {
+  const L = layers || sheet.getLayers?.() || {};
+  const map = [
+    [els.layerStavesBtn, L.staves !== false],
+    [els.layerLyricsBtn, L.lyrics !== false],
+    [els.layerChordsBtn, L.chords !== false],
+    [els.layerNotesBtn, L.notes !== false],
+  ];
+  for (const [btn, on] of map) {
+    if (!btn) continue;
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+}
+
+function syncAnnotModeButtons(mode) {
+  if (els.addChordBtn) els.addChordBtn.setAttribute("aria-pressed", mode === "chord" ? "true" : "false");
+  if (els.addNoteBtn) els.addNoteBtn.setAttribute("aria-pressed", mode === "note" ? "true" : "false");
+}
+
+function wireLayerToggle(btn, key) {
+  btn?.addEventListener("click", () => {
+    if (!sheet.hasScore()) return;
+    const cur = sheet.getLayers();
+    void sheet.setLayers({ [key]: !cur[key] });
+  });
+}
+
 function exportBaseName() {
   const base = (sourceFileName || "score").replace(/\.(musicxml|xml|mid|midi)$/i, "");
   return `${base || "score"}-edited.musicxml`;
@@ -431,6 +499,7 @@ async function saveSheetEdits() {
       voices: project.voices,
       isVoiceAudible: voiceAudible,
       voiceGain,
+      isVoiceVisible: voiceVisible,
       ticksPerBeat: project.ticksPerBeat,
       onsetTicks: project.onsetTicks || [],
     });
@@ -471,6 +540,7 @@ async function auditionOnset(tick) {
 
 const roll = new PianoRoll(els.pianoRoll, {
   isNoteAudible: noteAudible,
+  isNoteVisible: noteVisible,
   noteGain,
   noteColor,
   onSeek: (tick) => seekTo(tick),
@@ -523,15 +593,17 @@ function updateScoreViewUi() {
   els.pianoRoll.hidden = showSheet;
   els.sheetMusic.hidden = !showSheet;
   if (els.sheetZoomControls) els.sheetZoomControls.hidden = !showSheet;
+  if (els.sheetAnnotBar) els.sheetAnnotBar.hidden = !showSheet;
   els.viewRollBtn.setAttribute("aria-pressed", showSheet ? "false" : "true");
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
   els.scoreHeading.textContent = showSheet ? "Sheet music" : "Piano roll";
   els.scoreHint.textContent = showSheet
-    ? "←/→ skip onsets. Use − / + to zoom."
+    ? "Click a note to seek. + Chord / + Note then click the score to annotate. Toggle Staves · Lyrics · Chords · Notes."
     : hasSheet
       ? "Click the timeline to seek. Switch to Sheet music for the score. Mute/solo colours apply in both views."
       : "Click the timeline to seek. Arrow keys skip onsets. Load MusicXML for sheet music.";
   updateSheetToolbar();
+  if (showSheet) syncAnnotBar(sheet.getLayers?.());
 
   if (!showSheet) {
     roll.draw();
@@ -596,8 +668,10 @@ function renderVoices() {
   for (const voice of voices) {
     const li = document.createElement("li");
     const gain = voiceGain(voice.id);
+    const isHidden = hiddenVoices.has(voice.id);
     if (gain <= 0) li.classList.add("muted");
     else if (solo.size > 0 && !solo.has(voice.id)) li.classList.add("accomp");
+    if (isHidden) li.classList.add("voice-hidden");
 
     const mute = document.createElement("button");
     mute.type = "button";
@@ -617,6 +691,27 @@ function renderVoices() {
       if (solo.has(voice.id)) solo.delete(voice.id);
       else solo.add(voice.id);
       renderVoices();
+    });
+
+    const hideBtn = document.createElement("button");
+    hideBtn.type = "button";
+    hideBtn.className = "secondary voice-vis-btn";
+    hideBtn.title = isHidden ? "Show in roll & sheet" : "Hide from roll & sheet";
+    hideBtn.setAttribute("aria-label", isHidden ? `Show ${voice.name}` : `Hide ${voice.name}`);
+    hideBtn.setAttribute("aria-pressed", isHidden ? "true" : "false");
+    hideBtn.innerHTML = isHidden ? EYE_SLASH_ICON : EYE_ICON;
+    hideBtn.addEventListener("click", () => {
+      if (hiddenVoices.has(voice.id)) {
+        hiddenVoices.delete(voice.id);
+      } else {
+        hiddenVoices.add(voice.id);
+        // Hiding also mutes; Unmute remains available while still hidden.
+        muted.add(voice.id);
+      }
+      renderVoices();
+      if (scoreView === "sheet" && sheet.hasScore()) {
+        sheet.setPlayhead(transport.playheadTick, { scroll: false });
+      }
     });
 
     const name = document.createElement("div");
@@ -666,7 +761,7 @@ function renderVoices() {
     const ch = voice.channel == null ? "—" : `ch ${voice.channel + 1}`;
     meta.textContent = `${ch} · ${voice.noteCount} notes`;
 
-    li.append(mute, soloBtn, name, meta);
+    li.append(mute, soloBtn, hideBtn, name, meta);
     els.voiceList.appendChild(li);
   }
   updateAccompUi();
@@ -729,6 +824,7 @@ async function applyProject(parsed, fileName, opts = {}) {
   project = wrapProject(parsed);
   sourceFileName = fileName || "";
   voiceColors.clear();
+  hiddenVoices.clear();
   jiEnabled = !!(parsed.justPlayMeta && parsed.hasPitchBends);
   transport.setProject(project);
   roll.setProject(project);
@@ -756,6 +852,7 @@ async function applyProject(parsed, fileName, opts = {}) {
       voices: project.voices,
       isVoiceAudible: voiceAudible,
       voiceGain,
+      isVoiceVisible: voiceVisible,
       ticksPerBeat: project.ticksPerBeat,
       onsetTicks: project.onsetTicks || [],
     });
@@ -819,6 +916,7 @@ async function loadFile(file) {
   transport.stop();
   muted.clear();
   solo.clear();
+  hiddenVoices.clear();
   try {
     let parsed;
     if (isMusicXmlName(file.name)) {
@@ -867,6 +965,20 @@ els.sheetZoomInBtn?.addEventListener("click", async () => {
 
 els.sheetSaveBtn?.addEventListener("click", () => {
   void saveSheetEdits();
+});
+
+wireLayerToggle(els.layerStavesBtn, "staves");
+wireLayerToggle(els.layerLyricsBtn, "lyrics");
+wireLayerToggle(els.layerChordsBtn, "chords");
+wireLayerToggle(els.layerNotesBtn, "notes");
+
+els.addChordBtn?.addEventListener("click", () => {
+  if (!sheet.hasScore()) return;
+  sheet.setAnnotMode(sheet.annotMode === "chord" ? null : "chord");
+});
+els.addNoteBtn?.addEventListener("click", () => {
+  if (!sheet.hasScore()) return;
+  sheet.setAnnotMode(sheet.annotMode === "note" ? null : "note");
 });
 
 els.instrumentSelect.addEventListener("change", () => {

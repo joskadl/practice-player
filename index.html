@@ -94,6 +94,18 @@
           </button>
         </div>
       </div>
+      <div id="sheetAnnotBar" class="sheet-annot-bar" hidden>
+        <div class="annot-toggles" role="group" aria-label="Score layers">
+          <button type="button" id="layerStavesBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide staves and notation">Staves</button>
+          <button type="button" id="layerLyricsBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide lyrics">Lyrics</button>
+          <button type="button" id="layerChordsBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide chord symbols">Chords</button>
+          <button type="button" id="layerNotesBtn" class="secondary annot-toggle" aria-pressed="true" title="Show or hide performance notes">Notes</button>
+        </div>
+        <div class="annot-add" role="group" aria-label="Add annotations">
+          <button type="button" id="addChordBtn" class="secondary" title="Click the score to place a chord">+ Chord</button>
+          <button type="button" id="addNoteBtn" class="secondary" title="Click the score to place a text note">+ Note</button>
+        </div>
+      </div>
       <p id="scoreHint" class="hint tight score-hint">Click the timeline to seek. Arrow keys skip onsets. Mute/solo colours apply in both views.</p>
       <canvas
         id="pianoRoll"
