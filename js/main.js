@@ -209,7 +209,7 @@ async function recordSharedEdit(summary) {
 
 async function updateSyncUi() {
   const active = !!project?.musicXml && session.hasPack();
-  if (els.syncPanel) els.syncPanel.hidden = !project;
+  if (els.syncPanel) els.syncPanel.hidden = true;
   const depth = active ? await session.undoCount() : 0;
   if (els.syncUndoBtn) els.syncUndoBtn.disabled = !active || depth <= 0;
   if (els.syncExportBtn) els.syncExportBtn.disabled = !active;
@@ -1298,10 +1298,30 @@ els.installBtn?.addEventListener("click", async () => {
 });
 
 if ("serviceWorker" in navigator) {
+  // New SW takes control → reload once so the page uses fresh shell assets
+  // without requiring a hard refresh.
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {
-      /* offline install is best-effort */
-    });
+    navigator.serviceWorker
+      .register("./sw.js", { updateViaCache: "none" })
+      .then((reg) => {
+        // Pick up a newly deployed SW promptly.
+        reg.update().catch(() => {});
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            reg.update().catch(() => {});
+          }
+        });
+      })
+      .catch(() => {
+        /* offline install is best-effort */
+      });
   });
 }
 
