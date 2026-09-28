@@ -41,12 +41,49 @@ function shortAbbr(name) {
     .slice(0, 16);
 }
 
+const VOICE_COLORS_FIELD = "practice-player-voice-colors";
+
+function readMiscField(root, name) {
+  const identification = firstChild(root, "identification");
+  if (!identification) return null;
+  const misc = firstChild(identification, "miscellaneous");
+  if (!misc) return null;
+  for (const field of childrenByName(misc, "miscellaneous-field")) {
+    if (field.getAttribute("name") === name) return field.textContent?.trim() || "";
+  }
+  return null;
+}
+
+function writeMiscField(root, doc, name, value) {
+  let identification = firstChild(root, "identification");
+  if (!identification) {
+    identification = doc.createElement("identification");
+    const before = firstChild(root, "defaults") || firstChild(root, "part-list");
+    root.insertBefore(identification, before);
+  }
+  const misc = ensureChild(identification, "miscellaneous", doc);
+  let field = null;
+  for (const el of childrenByName(misc, "miscellaneous-field")) {
+    if (el.getAttribute("name") === name) {
+      field = el;
+      break;
+    }
+  }
+  if (!field) {
+    field = doc.createElement("miscellaneous-field");
+    field.setAttribute("name", name);
+    misc.appendChild(field);
+  }
+  setText(field, value);
+}
+
 /**
  * @param {string} xmlText
  * @returns {{
  *   title: string,
  *   parts: {id:string, name:string, abbreviation:string}[],
  *   staffLines: number,
+ *   voiceColors: Record<string, string>,
  * }}
  */
 export function readMusicXmlMeta(xmlText) {
@@ -92,7 +129,19 @@ export function readMusicXmlMeta(xmlText) {
     if (Number.isFinite(n)) staffLines = n;
   }
 
-  return { title, parts, staffLines };
+  /** @type {Record<string, string>} */
+  let voiceColors = {};
+  const rawColors = readMiscField(root, VOICE_COLORS_FIELD);
+  if (rawColors) {
+    try {
+      const parsed = JSON.parse(rawColors);
+      if (parsed && typeof parsed === "object") voiceColors = parsed;
+    } catch {
+      /* ignore bad JSON */
+    }
+  }
+
+  return { title, parts, staffLines, voiceColors };
 }
 
 /**
@@ -101,6 +150,7 @@ export function readMusicXmlMeta(xmlText) {
  *   title?: string,
  *   parts?: {id:string, name:string, abbreviation?:string}[],
  *   staffLines?: number,
+ *   voiceColors?: Record<string, string>,
  * }} edits
  * @returns {string}
  */
@@ -187,6 +237,10 @@ export function applyMusicXmlEdits(xmlText, edits) {
       }
       setText(staffWidth, lines === 0 ? "0" : "1.1");
     }
+  }
+
+  if (edits.voiceColors && typeof edits.voiceColors === "object") {
+    writeMiscField(root, doc, VOICE_COLORS_FIELD, JSON.stringify(edits.voiceColors));
   }
 
   const serialized = new XMLSerializer().serializeToString(doc);

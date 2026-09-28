@@ -14,6 +14,7 @@ import { ChoirSynth } from "./synth.js";
 import { Transport } from "./transport.js";
 import { PianoRoll, channelColor } from "./piano-roll.js";
 import { SheetView } from "./sheet-view.js";
+import { APP_VERSION_LABEL } from "./version.js";
 
 const els = {
   fileInput: document.getElementById("fileInput"),
@@ -30,7 +31,6 @@ const els = {
   durationLabel: document.getElementById("durationLabel"),
   voiceList: document.getElementById("voiceList"),
   emptyVoices: document.getElementById("emptyVoices"),
-  soloClearBtn: document.getElementById("soloClearBtn"),
   muteAllBtn: document.getElementById("muteAllBtn"),
   unmuteAllBtn: document.getElementById("unmuteAllBtn"),
   pianoRoll: document.getElementById("pianoRoll"),
@@ -52,13 +52,27 @@ const els = {
   tuningToggle: document.getElementById("tuningToggle"),
   tuningHint: document.getElementById("tuningHint"),
   tuningModeLabel: document.getElementById("tuningModeLabel"),
+  installBtn: document.getElementById("installBtn"),
+  appVersion: document.getElementById("appVersion"),
 };
 
 const synth = new ChoirSynth();
 const sheet = new SheetView(els.sheetMusic);
+/** @type {Map<string, string>} voiceId → hex */
+const voiceColors = new Map();
+
 sheet.onDirtyChange = (dirty) => {
   if (els.sheetSaveBtn) els.sheetSaveBtn.hidden = !dirty;
 };
+sheet.onPartRename = (partId, name) => {
+  if (!project?.voices) return;
+  for (const voice of project.voices) {
+    if (voice.partId === partId) voice.name = name;
+  }
+  renderVoices();
+};
+sheet.voiceColor = (voice) => resolveVoiceColor(voice);
+
 const muted = new Set();
 const solo = new Set();
 let project = null;
@@ -68,9 +82,28 @@ let scoreView = "roll";
 let jiEnabled = true;
 /** Original loaded file name (for export naming). */
 let sourceFileName = "";
+/** Deferred PWA install prompt from the browser. */
+let deferredInstall = null;
 
 /** 0–1 gain for non-soloed voices when any solo is active. */
 let accompanimentLevel = 0.25;
+
+function resolveVoiceColor(voiceLike) {
+  const channel = voiceLike?.channel ?? 0;
+  const partId = voiceLike?.partId;
+  if (partId) {
+    const fromSheet = sheet.getPartColor?.(partId);
+    if (fromSheet) return fromSheet;
+  }
+  const id = voiceLike?.id;
+  if (id && voiceColors.has(id)) return voiceColors.get(id);
+  return channelColor(channel);
+}
+
+function noteColor(note) {
+  const voice = project?.voices?.find((v) => v.id === note.voiceId);
+  return resolveVoiceColor(voice || { id: note.voiceId, channel: note.channel });
+}
 
 function setStatus(msg, isError = false) {
   els.status.textContent = msg || "";
@@ -206,6 +239,7 @@ async function auditionOnset(tick) {
 const roll = new PianoRoll(els.pianoRoll, {
   isNoteAudible: noteAudible,
   noteGain,
+  noteColor,
   onSeek: (tick) => seekTo(tick),
 });
 
@@ -260,7 +294,7 @@ function updateScoreViewUi() {
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
   els.scoreHeading.textContent = showSheet ? "Sheet music" : "Piano roll";
   els.scoreHint.textContent = showSheet
-    ? "Click the title or stave names to edit. A save icon appears when there are changes."
+    ? "Click title or stave names to edit · save icon appears when changed"
     : hasSheet
       ? "Click the timeline to seek. Switch to Sheet music for the score. Mute/solo colours apply in both views."
       : "Click the timeline to seek. Arrow keys skip onsets. Load MusicXML for sheet music.";
@@ -353,10 +387,26 @@ function renderVoices() {
     });
 
     const name = document.createElement("div");
-    const swatch = document.createElement("span");
+    const swatch = document.createElement("button");
+    swatch.type = "button";
     swatch.className = "swatch";
-    swatch.style.background = channelColor(voice.channel ?? 0);
-    name.append(swatch, document.createTextNode(voice.name));
+    swatch.title = "Change voice colour";
+    swatch.setAttribute("aria-label", `Colour for ${voice.name}`);
+    swatch.style.background = resolveVoiceColor(voice);
+    const picker = document.createElement("input");
+    picker.type = "color";
+    picker.value = normalizeHex(resolveVoiceColor(voice));
+    picker.hidden = true;
+    swatch.addEventListener("click", () => picker.click());
+    picker.addEventListener("input", () => {
+      const hex = picker.value;
+      voiceColors.set(voice.id, hex);
+      if (voice.partId && project?.musicXml) sheet.setPartColor(voice.partId, hex);
+      swatch.style.background = hex;
+      roll.draw();
+      if (sheet.hasScore()) sheet.applyVoiceVisibility();
+    });
+    name.append(swatch, picker, document.createTextNode(voice.name));
 
     const meta = document.createElement("div");
     meta.className = "meta";
@@ -372,17 +422,20 @@ function renderVoices() {
   if (sheet.hasScore()) sheet.applyVoiceVisibility();
 }
 
+function normalizeHex(color) {
+  const c = String(color || "#888888").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(c)) {
+    const r = c[1];
+    const g = c[2];
+    const b = c[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return "#888888";
+}
+
 function setLoadedUi(enabled) {
-  for (const el of [
-    els.playBtn,
-    els.pauseBtn,
-    els.stopBtn,
-    els.tempoPercent,
-    els.seek,
-    els.soloClearBtn,
-    els.muteAllBtn,
-    els.unmuteAllBtn,
-  ]) {
+  for (const el of [els.playBtn, els.pauseBtn, els.stopBtn, els.tempoPercent, els.seek, els.muteAllBtn, els.unmuteAllBtn]) {
     el.disabled = !enabled;
   }
   els.pauseBtn.disabled = true;
@@ -392,6 +445,7 @@ function setLoadedUi(enabled) {
 async function applyProject(parsed, fileName) {
   project = wrapProject(parsed);
   sourceFileName = fileName || "";
+  voiceColors.clear();
   jiEnabled = !!(parsed.justPlayMeta && parsed.hasPitchBends);
   transport.setProject(project);
   roll.setProject(project);
@@ -408,6 +462,10 @@ async function applyProject(parsed, fileName) {
     try {
       const meta = readMusicXmlMeta(parsed.musicXml);
       sheet.showStaffLines = meta.staffLines !== 0;
+      for (const voice of project.voices) {
+        const hex = voice.partId ? meta.voiceColors?.[voice.partId] : null;
+        if (hex) voiceColors.set(voice.id, hex);
+      }
     } catch {
       sheet.showStaffLines = true;
     }
@@ -418,6 +476,14 @@ async function applyProject(parsed, fileName) {
       ticksPerBeat: project.ticksPerBeat,
       onsetTicks: project.onsetTicks || [],
     });
+    sheet.markSaved(parsed.musicXml);
+    const colorSeed = {};
+    for (const voice of project.voices) {
+      if (voice.partId && voiceColors.has(voice.id)) {
+        colorSeed[voice.partId] = voiceColors.get(voice.id);
+      }
+    }
+    sheet.seedColors(colorSeed);
     scoreView = "sheet";
     updateSheetZoomLabel();
     updateSheetToolbar();
@@ -559,19 +625,16 @@ els.seek.addEventListener("input", () => {
   seekTo(Number(els.seek.value));
 });
 
-els.soloClearBtn.addEventListener("click", () => {
-  solo.clear();
-  renderVoices();
-});
-
 els.muteAllBtn.addEventListener("click", () => {
   if (!project) return;
+  solo.clear();
   for (const v of project.voices) muted.add(v.id);
   renderVoices();
 });
 
 els.unmuteAllBtn.addEventListener("click", () => {
   muted.clear();
+  solo.clear();
   renderVoices();
 });
 
@@ -607,12 +670,59 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", () => synth.panic());
 
+window.addEventListener("beforeunload", (ev) => {
+  if (!sheet.dirty) return;
+  ev.preventDefault();
+  ev.returnValue = "";
+});
+
+window.addEventListener("beforeinstallprompt", (ev) => {
+  ev.preventDefault();
+  deferredInstall = ev;
+  if (els.installBtn) els.installBtn.hidden = false;
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstall = null;
+  if (els.installBtn) els.installBtn.hidden = true;
+  setStatus("Installed — available offline from your home screen / app list.");
+});
+
+els.installBtn?.addEventListener("click", async () => {
+  if (deferredInstall) {
+    deferredInstall.prompt();
+    try {
+      await deferredInstall.userChoice;
+    } catch {
+      /* ignore */
+    }
+    deferredInstall = null;
+    if (els.installBtn) els.installBtn.hidden = true;
+    return;
+  }
+  // Safari / browsers without beforeinstallprompt: guide the user.
+  setStatus(
+    "To install: use your browser’s Share / menu → Add to Home Screen (or Install app).",
+  );
+});
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {
       /* offline install is best-effort */
     });
   });
+}
+
+if (els.appVersion) els.appVersion.textContent = APP_VERSION_LABEL;
+
+// Show install affordance even when beforeinstallprompt never fires (e.g. Safari).
+if (els.installBtn) {
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    // @ts-expect-error iOS Safari
+    window.navigator.standalone === true;
+  if (!isStandalone) els.installBtn.hidden = false;
 }
 
 setLoadedUi(false);

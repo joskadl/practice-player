@@ -99,11 +99,15 @@ export class SheetView {
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
     this.showStaffLines = true;
-    /** @type {{ title: string, parts: Map<string,string>, staffLines: number }|null} */
+    /** @type {{ title: string, parts: Map<string,string>, staffLines: number, colors: Map<string,string> }|null} */
     this._pending = null;
     this.dirty = false;
     /** @type {((dirty:boolean)=>void)|null} */
     this.onDirtyChange = null;
+    /** @type {((partId:string, name:string)=>void)|null} */
+    this.onPartRename = null;
+    /** @type {((voice:{id:string,channel?:number,partId?:string})=>string)|null} */
+    this.voiceColor = null;
     this._editInput = null;
     this._editCtx = null;
   }
@@ -155,6 +159,7 @@ export class SheetView {
       title: meta.title || "",
       parts: new Map(meta.parts.map((p) => [p.id, p.name])),
       staffLines: this.showStaffLines ? 5 : 0,
+      colors: new Map(Object.entries(meta.voiceColors || {})),
     };
     return this._pending;
   }
@@ -168,7 +173,30 @@ export class SheetView {
       title: p.title,
       parts: [...p.parts.entries()].map(([id, name]) => ({ id, name })),
       staffLines: p.staffLines,
+      voiceColors: Object.fromEntries(p.colors.entries()),
     };
+  }
+
+  /** Load colour map without marking the score dirty. */
+  seedColors(voiceColors = {}) {
+    const pending = this._ensurePending();
+    for (const [id, hex] of Object.entries(voiceColors || {})) {
+      if (id && hex) pending.colors.set(id, hex);
+    }
+    this._setDirty(false);
+  }
+
+  /** Update a part colour override and mark dirty. */
+  setPartColor(partId, hex) {
+    if (!partId || !hex) return;
+    const pending = this._ensurePending();
+    pending.colors.set(partId, hex);
+    this._setDirty(true);
+  }
+
+  getPartColor(partId) {
+    if (!partId) return null;
+    return this._ensurePending().colors.get(partId) || null;
   }
 
   /**
@@ -809,7 +837,10 @@ export class SheetView {
           : 0;
     let color = MUTED_COLOR;
     if (gain > 0) {
-      const base = channelColor(voice.channel ?? 0);
+      const base =
+        typeof this.voiceColor === "function"
+          ? this.voiceColor(voice)
+          : channelColor(voice.channel ?? 0);
       color = gain >= 0.95 ? base : mixHex(base, MUTED_COLOR, 1 - gain);
     }
     try {
@@ -973,6 +1004,7 @@ export class SheetView {
       )) {
         el.textContent = next;
       }
+      if (typeof this.onPartRename === "function") this.onPartRename(partId, next);
     }
     this._setDirty(true);
   }

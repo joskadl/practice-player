@@ -35,10 +35,60 @@ body {
 }
 
 .header h1 {
-  margin: 0 0 0.35rem;
+  margin: 0;
   font-size: 1.6rem;
   font-weight: 650;
   letter-spacing: -0.02em;
+}
+
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+}
+
+.offline-hint {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  max-width: 40rem;
+}
+
+.install-btn {
+  flex: 0 0 auto;
+}
+
+.app-footer {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 0.75rem 1.25rem 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.app-version {
+  font-size: 0.75rem;
+  color: var(--muted);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-hint {
+  max-width: none;
+  text-align: left;
+  margin: 0 0 0.65rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 560px) {
+  .score-hint {
+    white-space: normal;
+  }
 }
 
 .tagline {
@@ -205,12 +255,6 @@ select {
   margin: 0;
   max-width: 28rem;
   text-align: right;
-}
-
-.score-hint {
-  max-width: none;
-  text-align: left;
-  margin: 0 0 0.65rem;
 }
 
 .view-toggle {
@@ -385,12 +429,21 @@ select {
 }
 
 .swatch {
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 2px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 3px;
   display: inline-block;
-  margin-right: 0.35rem;
+  margin-right: 0.4rem;
   vertical-align: middle;
+  border: 1px solid rgba(28, 26, 23, 0.25);
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+button.swatch {
+  appearance: none;
+  background: transparent;
 }
 
 @media (max-width: 560px) {

@@ -1,5 +1,6 @@
 {
   "name": "midi-practice-player",
+  "version": "0.1.0",
   "private": true,
   "description": "Standalone MIDI rehearsal player with choir soundfont",
   "type": "module"

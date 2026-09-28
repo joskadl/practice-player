@@ -68,9 +68,15 @@ With the local server running, open the app and load:
 
 In **Sheet music** view:
 
-- Click the **title** or a **stave name** on the score to edit it inline
+- Click the **title** or a **stave name** on the score to edit it inline (Voices list updates too)
+- Click a **colour square** in Voices to recolour roll + sheet notes (saved into MusicXML)
 - Use **Lines** to show/hide staff lines
 - When anything changed, a **save** icon appears — click it to download the edited MusicXML
+- Closing the tab with unsaved edits prompts to stay and save
+
+## Offline install
+
+Use **Install for offline** in the header (or your browser’s Add to Home Screen). After one online visit the service worker caches the app and soundfont. The footer shows the app version (from the git tag).
 
 ## JustPlay retuned MIDI
 

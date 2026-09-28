@@ -14,7 +14,15 @@
 <body>
   <main class="app">
     <header class="header">
-      <h1>MIDI Practice Player</h1>
+      <div class="header-row">
+        <h1>MIDI Practice Player</h1>
+        <button type="button" id="installBtn" class="secondary install-btn" hidden title="Install for offline use">
+          Install for offline
+        </button>
+      </div>
+      <p class="offline-hint">
+        Open once online, then use <strong>Install for offline</strong> (or your browser’s Add to Home Screen) so the app and soundfont work without internet.
+      </p>
     </header>
 
     <section class="panel load-panel">
@@ -106,7 +114,6 @@
       <div class="voices-head">
         <h2>Voices</h2>
         <div class="voice-actions">
-          <button type="button" id="soloClearBtn" disabled>Clear solos</button>
           <button type="button" id="muteAllBtn" disabled>Mute all</button>
           <button type="button" id="unmuteAllBtn" disabled>Unmute all</button>
         </div>
@@ -120,6 +127,10 @@
       <p id="emptyVoices" class="hint">Open a MIDI or MusicXML file to see voices here.</p>
     </section>
   </main>
+
+  <footer class="app-footer">
+    <span id="appVersion" class="app-version"></span>
+  </footer>
 
   <script type="module" src="js/main.js"></script>
 </body>

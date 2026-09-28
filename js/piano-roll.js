@@ -121,7 +121,12 @@ export class PianoRoll {
       const y = topPad + noteH - ((n.note - this._minNote) / noteSpan) * noteH;
       const gain =
         typeof this.opts.noteGain === "function" ? this.opts.noteGain(n) : this.opts.isNoteAudible(n) ? 1 : 0;
-      ctx.fillStyle = gain > 0 ? channelColor(n.channel) : "#3a4048";
+      ctx.fillStyle =
+        gain > 0
+          ? typeof this.opts.noteColor === "function"
+            ? this.opts.noteColor(n)
+            : channelColor(n.channel)
+          : "#3a4048";
       ctx.globalAlpha = gain <= 0 ? 0.35 : 0.35 + 0.65 * Math.min(1, gain);
       const barH = Math.max(4, Math.min(10, noteH / noteSpan + 2));
       ctx.fillRect(x0, y - barH / 2, Math.max(2, x1 - x0), barH);
