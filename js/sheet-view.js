@@ -1,15 +1,20 @@
 /**
  * OpenSheetMusicDisplay wrapper: MusicXML score, mute/solo colours,
- * playback cursor, auto-scroll, and zoom.
+ * playback cursor, auto-scroll, zoom, and inline title/part editing.
  */
 
 import { channelColor } from "./piano-roll.js";
+import { readMusicXmlMeta, applyMusicXmlEdits } from "./musicxml-edit.js";
 
 const MUTED_COLOR = "#b0b0b0";
 const WIDTH_FALLBACK = 640;
 const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 2.25;
 const ZOOM_DEFAULT = 0.55;
+/** OSMD unit → CSS px factor (see Cursor.updateWidthAndStyle). */
+const OSMD_UNIT = 10;
+/** Gap before notehead (OSMD units) so the bar sits just left of the head. */
+const CURSOR_HEAD_GAP = 0.35;
 
 function mixHex(a, b, t) {
   const parse = (hex) => {
@@ -87,16 +92,20 @@ export class SheetView {
     this._ready = false;
     this.ticksPerBeat = 480;
     this.zoom = ZOOM_DEFAULT;
-    /** Note-onset timeline in OSMD whole-note time (rests excluded). */
-    /** @type {{wn:number, tick:number}[]} */
+    /** @type {{wn:number, tick:number, x:number|null}[]} */
     this._timeline = [];
-    /** Optional project onset ticks — used to snap the playhead to attacks. */
     /** @type {number[]} */
     this._onsetTicks = [];
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
-    /** When false, EngravingRules.StaffLineWidth = 0 (and MusicXML staff-lines=0 on export). */
     this.showStaffLines = true;
+    /** @type {{ title: string, parts: Map<string,string>, staffLines: number }|null} */
+    this._pending = null;
+    this.dirty = false;
+    /** @type {((dirty:boolean)=>void)|null} */
+    this.onDirtyChange = null;
+    this._editInput = null;
+    this._editCtx = null;
   }
 
   async ensure() {
@@ -106,6 +115,7 @@ export class SheetView {
   }
 
   clear() {
+    this._cancelInlineEdit();
     this.xml = null;
     this.instrumentVoices = [];
     this._ready = false;
@@ -113,6 +123,8 @@ export class SheetView {
     this._onsetTicks = [];
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
+    this._pending = null;
+    this._setDirty(false);
     if (this.osmd) {
       try {
         this.osmd.clear();
@@ -122,6 +134,55 @@ export class SheetView {
       this.osmd = null;
     }
     this.container.innerHTML = "";
+  }
+
+  _setDirty(dirty) {
+    const next = !!dirty;
+    if (this.dirty === next) return;
+    this.dirty = next;
+    if (typeof this.onDirtyChange === "function") this.onDirtyChange(this.dirty);
+  }
+
+  _ensurePending() {
+    if (this._pending) return this._pending;
+    let meta;
+    try {
+      meta = readMusicXmlMeta(this.xml || "");
+    } catch {
+      meta = { title: "", parts: [], staffLines: this.showStaffLines ? 5 : 0 };
+    }
+    this._pending = {
+      title: meta.title || "",
+      parts: new Map(meta.parts.map((p) => [p.id, p.name])),
+      staffLines: this.showStaffLines ? 5 : 0,
+    };
+    return this._pending;
+  }
+
+  /**
+   * Current edits as MusicXML patch fields (for export).
+   */
+  getEdits() {
+    const p = this._ensurePending();
+    return {
+      title: p.title,
+      parts: [...p.parts.entries()].map(([id, name]) => ({ id, name })),
+      staffLines: p.staffLines,
+    };
+  }
+
+  /**
+   * Apply pending edits into MusicXML text and return it (does not clear dirty).
+   */
+  buildEditedXml() {
+    if (!this.xml) return "";
+    return applyMusicXmlEdits(this.xml, this.getEdits());
+  }
+
+  markSaved(xmlText) {
+    this.xml = xmlText;
+    this._pending = null;
+    this._setDirty(false);
   }
 
   getZoom() {
@@ -237,15 +298,29 @@ export class SheetView {
    */
   async setShowStaffLines(show, opts = {}) {
     this.showStaffLines = !!show;
+    const pending = this._ensurePending();
+    const lines = this.showStaffLines ? 5 : 0;
+    if (pending.staffLines !== lines) {
+      pending.staffLines = lines;
+      this._setDirty(true);
+    }
     if (!this.osmd || !this._ready) return;
     this._applyStaffLineRules();
     if (opts.rerender === false) return;
+    await this._rerenderKeepPlayhead({ scroll: false });
+  }
+
+  async _rerenderKeepPlayhead({ scroll = true } = {}) {
     const wasHidden = this.container.hidden;
     if (wasHidden) this.container.hidden = false;
+    this._applyCursorStyle();
+    this._applyStaffLineRules();
+    this.osmd.zoom = this.zoom;
     this.osmd.render();
     this.applyVoiceVisibility();
     this._buildTimeline();
-    this.setPlayhead(this._lastPlayheadTick, { scroll: false });
+    this._bindInlineEditors();
+    this.setPlayhead(this._lastPlayheadTick, { scroll });
     if (wasHidden) this.container.hidden = true;
   }
 
@@ -302,6 +377,7 @@ export class SheetView {
       this._mapInstruments(opts.voices || []);
       this.applyVoiceVisibility();
       this._buildTimeline();
+      this._bindInlineEditors();
       this._ready = true;
       this.setPlayhead(opts.playheadTick ?? 0, { scroll: false });
     } finally {
@@ -316,6 +392,7 @@ export class SheetView {
     const playhead = this._lastPlayheadTick;
     const zoom = this.zoom;
     const showLines = this.showStaffLines;
+    const wasDirty = this.dirty;
     await this.load(xmlText, {
       ...opts,
       playheadTick: playhead,
@@ -324,12 +401,9 @@ export class SheetView {
     this.showStaffLines = showLines;
     if (this.osmd) {
       this.osmd.zoom = zoom;
-      this._applyStaffLineRules();
-      this.osmd.render();
-      this.applyVoiceVisibility();
-      this._buildTimeline();
-      this.setPlayhead(playhead, { scroll: true });
+      await this._rerenderKeepPlayhead({ scroll: true });
     }
+    if (!wasDirty) this._setDirty(false);
   }
 
   async revealAndRender() {
@@ -337,13 +411,7 @@ export class SheetView {
     this.container.hidden = false;
     const width = await this._waitForWidth();
     this._configurePageWidth(width);
-    this._applyCursorStyle();
-    this._applyStaffLineRules();
-    this.osmd.zoom = this.zoom;
-    this.osmd.render();
-    this.applyVoiceVisibility();
-    this._buildTimeline();
-    this.setPlayhead(this._lastPlayheadTick, { scroll: true });
+    await this._rerenderKeepPlayhead({ scroll: true });
   }
 
   /**
@@ -353,16 +421,7 @@ export class SheetView {
   async setZoom(zoom, opts = {}) {
     this.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(zoom) || ZOOM_DEFAULT));
     if (!this.osmd || !this._ready) return this.zoom;
-    const wasHidden = this.container.hidden;
-    if (wasHidden) this.container.hidden = false;
-    this._applyCursorStyle();
-    this._applyStaffLineRules();
-    this.osmd.zoom = this.zoom;
-    this.osmd.render();
-    this.applyVoiceVisibility();
-    this._buildTimeline();
-    this.setPlayhead(this._lastPlayheadTick, { scroll: opts.scroll !== false });
-    if (wasHidden) this.container.hidden = true;
+    await this._rerenderKeepPlayhead({ scroll: opts.scroll !== false });
     return this.zoom;
   }
 
@@ -456,12 +515,18 @@ export class SheetView {
       let guard = 0;
       while (!iteratorEnded(cursor.iterator) && guard++ < 200000) {
         if (this._iteratorHasPitchedNote(cursor.iterator)) {
+          try {
+            cursor.update();
+          } catch {
+            /* ignore */
+          }
           const wn = fractionReal(
             cursor.iterator.currentTimeStamp ?? cursor.iterator.CurrentTimestamp,
           );
           this._timeline.push({
             wn,
             tick: this._wnToTick(wn),
+            x: this._leftmostNoteheadX(),
           });
         }
         if (!this._advanceCursorNotesOnly()) break;
@@ -474,8 +539,34 @@ export class SheetView {
   }
 
   /**
+   * Leftmost pitched notehead AbsolutePosition.x under the current OSMD cursor.
+   * Falls back to staff-entry x when notehead graphics are missing.
+   */
+  _leftmostNoteheadX() {
+    const cursor = this.osmd?.cursor;
+    if (!cursor) return null;
+    let minX = null;
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const src = gn?.sourceNote || gn?.getSourceNote?.();
+        const isRest =
+          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
+        if (isRest) continue;
+        const x = gn?.PositionAndShape?.AbsolutePosition?.x;
+        if (typeof x === "number" && Number.isFinite(x)) {
+          minX = minX == null ? x : Math.min(minX, x);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return minX;
+  }
+
+  /**
    * Snap transport tick to the onset that is currently sounding (last onset ≤ tick).
-   * Keeps the cursor on note attacks instead of interpolating through the bar.
    */
   _activeOnsetTick(tick) {
     const t = tick | 0;
@@ -497,8 +588,50 @@ export class SheetView {
     return best;
   }
 
+  _onsetIndex(tick) {
+    const onset = this._activeOnsetTick(tick);
+    let idx = 0;
+    for (let i = 0; i < this._onsetTicks.length; i++) {
+      if (this._onsetTicks[i] <= onset) idx = i;
+      else break;
+    }
+    return idx;
+  }
+
   /**
-   * Move OSMD cursor to the pitched note entry for the active onset at ``tick``.
+   * Map playhead → OSMD note-slice index.
+   * Prefer onset↔slice index mapping (avoids tick/wn drift from pickups etc.).
+   */
+  _timelineIndexForTick(tick) {
+    if (!this._timeline.length) return 0;
+    const onsetIdx = this._onsetTicks.length ? this._onsetIndex(tick) : -1;
+    if (
+      onsetIdx >= 0 &&
+      this._onsetTicks.length > 0 &&
+      Math.abs(this._onsetTicks.length - this._timeline.length) <= Math.max(2, this._timeline.length * 0.05)
+    ) {
+      if (this._onsetTicks.length === this._timeline.length) {
+        return Math.min(onsetIdx, this._timeline.length - 1);
+      }
+      // Proportional map when counts are close but not identical.
+      const tMax = Math.max(1, this._onsetTicks.length - 1);
+      const sMax = Math.max(1, this._timeline.length - 1);
+      return Math.min(this._timeline.length - 1, Math.round((onsetIdx / tMax) * sMax));
+    }
+
+    const onsetTick = this._activeOnsetTick(tick);
+    const targetWn = this._tickToWn(onsetTick);
+    let idx = 0;
+    for (let i = 0; i < this._timeline.length; i++) {
+      if (this._timeline[i].wn <= targetWn + 1e-9) idx = i;
+      else break;
+    }
+    return idx;
+  }
+
+  /**
+   * Move OSMD cursor to the pitched note entry for the active onset at ``tick``,
+   * then pin the cursor image just left of the rendered noteheads.
    * @param {number} tick
    * @param {{scroll?: boolean}} [opts]
    */
@@ -519,15 +652,7 @@ export class SheetView {
     }
     if (!this._timeline.length) return;
 
-    const onsetTick = this._activeOnsetTick(this._lastPlayheadTick);
-    const targetWn = this._tickToWn(onsetTick);
-
-    // Prefer whole-note compare (stable vs OSMD Fraction timestamps).
-    let idx = 0;
-    for (let i = 0; i < this._timeline.length; i++) {
-      if (this._timeline[i].wn <= targetWn + 1e-9) idx = i;
-      else break;
-    }
+    const idx = this._timelineIndexForTick(this._lastPlayheadTick);
 
     if (idx < this._cursorIdx) {
       this._resetCursorToFirstNote();
@@ -541,8 +666,55 @@ export class SheetView {
     } catch {
       /* ignore */
     }
+    this._alignCursorToNoteheads(idx);
     this._ensureCursorVisible();
     if (scroll) this._scrollCursorIntoView();
+  }
+
+  /**
+   * Place the OSMD cursor image just before the actual notehead graphics.
+   * Avoids mid-bar timestamp interpolation when staff-entry anchors are unreliable.
+   */
+  _alignCursorToNoteheads(timelineIdx) {
+    const cursor = this.osmd?.cursor;
+    const el = cursor?.cursorElement;
+    if (!cursor || !el) return;
+
+    let xUnit = this._leftmostNoteheadX();
+    if (xUnit == null && timelineIdx != null && this._timeline[timelineIdx]) {
+      xUnit = this._timeline[timelineIdx].x;
+    }
+    if (xUnit == null) return;
+
+    // ThinLeft uses (x - 1.5); we pin tighter to the notehead.
+    const leftPx = (xUnit - CURSOR_HEAD_GAP) * OSMD_UNIT * this.zoom;
+    el.style.left = `${Math.max(0, leftPx)}px`;
+
+    // Also try SVG bbox if AbsolutePosition drifts from painted heads.
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      const parent = this.container.getBoundingClientRect();
+      let minLeft = Infinity;
+      for (const gn of gnotes) {
+        const src = gn?.sourceNote || gn?.getSourceNote?.();
+        const isRest =
+          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
+        if (isRest) continue;
+        const svg = gn?.getSVGGElement?.() || gn?.svggElement;
+        if (!svg || typeof svg.getBoundingClientRect !== "function") continue;
+        const r = svg.getBoundingClientRect();
+        if (!r.width && !r.height) continue;
+        const left = r.left - parent.left + this.container.scrollLeft;
+        if (left < minLeft) minLeft = left;
+      }
+      if (minLeft < Infinity) {
+        const gapPx = Math.max(2, 3.5 * this.zoom);
+        el.style.left = `${Math.max(0, minLeft - gapPx)}px`;
+      }
+    } catch {
+      /* AbsolutePosition fallback already applied */
+    }
   }
 
   _scrollCursorIntoView() {
@@ -662,6 +834,147 @@ export class SheetView {
 
   hasScore() {
     return this._ready && !!this.xml;
+  }
+
+  _cancelInlineEdit() {
+    if (this._editInput) {
+      this._editInput.remove();
+      this._editInput = null;
+    }
+    this._editCtx = null;
+  }
+
+  /**
+   * Make title + stave-name SVG texts clickable for inline editing.
+   */
+  _bindInlineEditors() {
+    this._cancelInlineEdit();
+    const svg = this.container.querySelector("svg");
+    if (!svg || !this.xml) return;
+
+    let meta;
+    try {
+      meta = readMusicXmlMeta(this.xml);
+    } catch {
+      return;
+    }
+    const pending = this._ensurePending();
+
+    const texts = [...svg.querySelectorAll("text")];
+    for (const el of texts) {
+      el.classList.remove("pp-editable-text");
+      el.removeAttribute("data-pp-edit");
+      el.removeAttribute("data-pp-part-id");
+      el.onclick = null;
+    }
+
+    const titleValue = pending.title || meta.title || "";
+    if (titleValue) {
+      for (const el of texts) {
+        if (el.textContent?.trim() === meta.title || el.textContent?.trim() === titleValue) {
+          this._markEditable(el, "title", null);
+          if (pending.title && el.textContent.trim() !== pending.title) {
+            el.textContent = pending.title;
+          }
+        }
+      }
+    }
+
+    for (const part of meta.parts) {
+      const currentName = pending.parts.get(part.id) || part.name;
+      for (const el of texts) {
+        const t = el.textContent?.trim() || "";
+        if (t === part.name || t === part.abbreviation || t === currentName) {
+          this._markEditable(el, "part", part.id);
+          if (currentName && t !== currentName && (t === part.name || t === part.abbreviation)) {
+            el.textContent = currentName;
+          }
+        }
+      }
+    }
+  }
+
+  _markEditable(el, kind, partId) {
+    el.classList.add("pp-editable-text");
+    el.setAttribute("data-pp-edit", kind);
+    if (partId) el.setAttribute("data-pp-part-id", partId);
+    el.style.cursor = "text";
+    el.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._beginInlineEdit(el, kind, partId);
+    };
+  }
+
+  _beginInlineEdit(svgText, kind, partId) {
+    this._cancelInlineEdit();
+    const rect = svgText.getBoundingClientRect();
+    const parent = this.container.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+
+    const cs = getComputedStyle(this.container);
+    if (cs.position === "static") this.container.style.position = "relative";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "sheet-inline-edit";
+    input.value = svgText.textContent?.trim() || "";
+    input.setAttribute("aria-label", kind === "title" ? "Edit title" : "Edit stave label");
+    const left = rect.left - parent.left + this.container.scrollLeft;
+    const top = rect.top - parent.top + this.container.scrollTop;
+    input.style.left = `${Math.max(0, left - 4)}px`;
+    input.style.top = `${Math.max(0, top - 2)}px`;
+    input.style.width = `${Math.max(80, rect.width + 24)}px`;
+    input.style.fontSize = `${Math.max(12, rect.height * 0.85)}px`;
+
+    this.container.appendChild(input);
+    this._editInput = input;
+    this._editCtx = { svgText, kind, partId, original: input.value };
+    input.focus();
+    input.select();
+
+    const commit = () => this._commitInlineEdit();
+    const cancel = () => {
+      if (this._editCtx) this._editCtx.svgText.textContent = this._editCtx.original;
+      this._cancelInlineEdit();
+    };
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        commit();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        cancel();
+      }
+    });
+    input.addEventListener("blur", () => commit());
+  }
+
+  _commitInlineEdit() {
+    if (!this._editInput || !this._editCtx) return;
+    const { kind, partId, original, svgText } = this._editCtx;
+    const next = this._editInput.value.trim();
+    this._cancelInlineEdit();
+    if (!next || next === original) {
+      if (svgText) svgText.textContent = original;
+      return;
+    }
+
+    const pending = this._ensurePending();
+    if (kind === "title") {
+      pending.title = next;
+      for (const el of this.container.querySelectorAll('text[data-pp-edit="title"]')) {
+        el.textContent = next;
+      }
+    } else if (kind === "part" && partId) {
+      pending.parts.set(partId, next);
+      for (const el of this.container.querySelectorAll(
+        `text[data-pp-edit="part"][data-pp-part-id="${String(partId).replace(/"/g, "")}"]`,
+      )) {
+        el.textContent = next;
+      }
+    }
+    this._setDirty(true);
   }
 }
 

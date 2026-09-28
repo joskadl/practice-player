@@ -238,12 +238,20 @@ select {
   color: var(--muted);
 }
 
+.sheet-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.15rem;
+}
+
 .view-btn[aria-pressed="true"] {
   background: var(--accent);
   color: var(--accent-ink);
 }
 
 .sheet-music {
+  position: relative;
   width: 100%;
   min-width: 0;
   min-height: 220px;
@@ -265,55 +273,21 @@ select {
   height: auto;
 }
 
-.sheet-edit {
-  margin: 0 0 0.75rem;
-  padding: 0.75rem 0.85rem;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  background: #faf7f1;
-  display: grid;
-  gap: 0.65rem;
+.pp-editable-text {
+  cursor: text;
 }
 
-.sheet-edit-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.25rem;
-  align-items: center;
-}
-
-.sheet-edit-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-  flex: 1 1 12rem;
-}
-
-.sheet-edit-field input {
+.sheet-inline-edit {
+  position: absolute;
+  z-index: 30;
+  margin: 0;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
   font: inherit;
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.4rem 0.55rem;
-  background: #fff;
-}
-
-.sheet-edit-toggle {
-  flex: 0 0 auto;
-}
-
-.sheet-part-fields {
-  display: grid;
-  gap: 0.45rem;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-}
-
-.sheet-edit-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+  background: #fffef9;
+  box-shadow: 0 2px 8px rgba(28, 26, 23, 0.12);
 }
 
 .tuning-panel {

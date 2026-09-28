@@ -66,12 +66,11 @@ With the local server running, open the app and load:
 
 ## Sheet edits & export
 
-In **Sheet music** view you can:
+In **Sheet music** view:
 
-- Edit the **title** and each **stave / part label**
-- Toggle **Staff lines** off for a cleaner choir-practice look
-- **Apply to score** to re-render immediately
-- **Export MusicXML** to download the edited file (labels + staff-lines preference written into the XML)
+- Click the **title** or a **stave name** on the score to edit it inline
+- Use **Lines** to show/hide staff lines
+- When anything changed, a **save** icon appears — click it to download the edited MusicXML
 
 ## JustPlay retuned MIDI
 
