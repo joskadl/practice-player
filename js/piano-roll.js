@@ -22,6 +22,25 @@ export function channelColor(channel) {
   return CHANNEL_COLORS[(channel ?? 0) % CHANNEL_COLORS.length];
 }
 
+const ROLL_MUTED = "#c8ced6";
+const ROLL_NEUTRAL = "#dfe3ea";
+
+function mixHex(a, b, t) {
+  const parse = (hex) => {
+    const h = String(hex || "").replace("#", "");
+    if (h.length !== 6) return [136, 136, 136];
+    return [
+      Number.parseInt(h.slice(0, 2), 16),
+      Number.parseInt(h.slice(2, 4), 16),
+      Number.parseInt(h.slice(4, 6), 16),
+    ];
+  };
+  const ca = parse(a);
+  const cb = parse(b);
+  const m = (i) => Math.round(ca[i] + (cb[i] - ca[i]) * t);
+  return `#${[m(0), m(1), m(2)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 /**
  * Piano-roll canvas: notes by pitch vs time, channel colours, click-to-seek.
  */
@@ -30,6 +49,7 @@ export class PianoRoll {
    * @param {HTMLCanvasElement} canvas
    * @param {{
    *   isNoteAudible: (note: object) => boolean,
+   *   isNoteVisible?: (note: object) => boolean,
    *   onSeek: (tick: number) => void,
    * }} opts
    */
@@ -116,18 +136,30 @@ export class PianoRoll {
     }
 
     for (const n of this.project.notes) {
+      if (typeof this.opts.isNoteVisible === "function" && !this.opts.isNoteVisible(n)) {
+        continue;
+      }
       const x0 = (n.start / len) * cssW;
       const x1 = (n.end / len) * cssW;
       const y = topPad + noteH - ((n.note - this._minNote) / noteSpan) * noteH;
       const gain =
         typeof this.opts.noteGain === "function" ? this.opts.noteGain(n) : this.opts.isNoteAudible(n) ? 1 : 0;
-      ctx.fillStyle =
-        gain > 0
-          ? typeof this.opts.noteColor === "function"
-            ? this.opts.noteColor(n)
-            : channelColor(n.channel)
-          : "#3a4048";
-      ctx.globalAlpha = gain <= 0 ? 0.35 : 0.35 + 0.65 * Math.min(1, gain);
+      const base =
+        typeof this.opts.noteColor === "function"
+          ? this.opts.noteColor(n)
+          : channelColor(n.channel);
+      if (gain <= 0.001) {
+        // Muted: light neutral so active voices read clearly.
+        ctx.fillStyle = ROLL_MUTED;
+        ctx.globalAlpha = 0.22;
+      } else if (gain < 0.95) {
+        // Accompaniment under solo: washed-out tint of the channel colour.
+        ctx.fillStyle = mixHex(base, ROLL_NEUTRAL, 0.62);
+        ctx.globalAlpha = 0.28 + 0.28 * Math.min(1, gain);
+      } else {
+        ctx.fillStyle = base;
+        ctx.globalAlpha = 0.92;
+      }
       const barH = Math.max(4, Math.min(10, noteH / noteSpan + 2));
       ctx.fillRect(x0, y - barH / 2, Math.max(2, x1 - x0), barH);
       ctx.globalAlpha = 1;
