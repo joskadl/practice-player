@@ -540,6 +540,14 @@ select {
   visibility: visible !important;
 }
 
+/* Playhead bar — geometry is set in JS to match visible layers. */
+.sheet-music img.osmd-cursor,
+.sheet-music .osmd-cursor {
+  max-height: none !important;
+  object-fit: fill;
+  pointer-events: none;
+}
+
 .sheet-music.pp-hide-lyrics .lyrics,
 .sheet-music.pp-hide-lyrics .dash {
   display: none !important;

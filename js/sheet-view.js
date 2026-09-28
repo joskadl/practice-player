@@ -780,16 +780,23 @@ export class SheetView {
   }
 
   /**
-   * Client-space bounds for pitched noteheads currently under the OSMD cursor.
+   * Client-space bounds for alignment under the OSMD cursor.
+   * Uses notehead layout boxes for X (even when staves are CSS-hidden) and
+   * visible lyrics/chords/notes for the vertical span of the current system.
    * @returns {{left:number, top:number, bottom:number}|null} container-content coords
    */
-  _noteheadsBoundsUnderCursor() {
+  _cursorAlignBounds() {
     const cursor = this.osmd?.cursor;
     if (!cursor) return null;
-    let minLeft = null;
-    let minTop = null;
-    let maxBottom = null;
     const host = this.container.getBoundingClientRect();
+    const scrollL = this.container.scrollLeft;
+    const scrollT = this.container.scrollTop;
+    const stavesOn = !!this.layers.staves;
+
+    let minLeft = null;
+    /** @type {Set<Element>} */
+    const staffGroups = new Set();
+
     try {
       const gnotes =
         typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
@@ -803,36 +810,117 @@ export class SheetView {
         if (voice && typeof this._isVoiceVisible === "function" && !this._isVoiceVisible(voice.id)) {
           continue;
         }
-        const svg = gn?.getSVGGElement?.() || gn?.svggElement;
-        if (!svg || typeof svg.getBoundingClientRect !== "function") continue;
-        const r = svg.getBoundingClientRect();
+        const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
+        if (!svgEl || typeof svgEl.getBoundingClientRect !== "function") continue;
+        const r = svgEl.getBoundingClientRect();
+        // Noteheads keep layout when CSS-hidden; still use them for X.
         if (!(r.width > 0 || r.height > 0)) continue;
-        // Hidden notes may still have layout boxes — skip non-visible elements.
-        const st = globalThis.getComputedStyle?.(svg);
-        if (st && (st.visibility === "hidden" || st.opacity === "0")) continue;
-        const left = r.left - host.left + this.container.scrollLeft;
-        const top = r.top - host.top + this.container.scrollTop;
-        const bottom = r.bottom - host.top + this.container.scrollTop;
+        const left = r.left - host.left + scrollL;
         minLeft = minLeft == null ? left : Math.min(minLeft, left);
-        minTop = minTop == null ? top : Math.min(minTop, top);
-        maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
+        const staffG = svgEl.closest?.("g.staffline");
+        if (staffG) staffGroups.add(staffG);
       }
     } catch {
       return null;
     }
     if (minLeft == null) return null;
-    return { left: minLeft, top: minTop ?? 0, bottom: maxBottom ?? minTop ?? 0 };
+
+    let minTop = null;
+    let maxBottom = null;
+    const absorb = (el) => {
+      if (!el || typeof el.getBoundingClientRect !== "function") return;
+      const st = globalThis.getComputedStyle?.(el);
+      if (st && (st.visibility === "hidden" || st.display === "none" || st.opacity === "0")) {
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      if (!(r.width > 0.5 || r.height > 0.5)) return;
+      const top = r.top - host.top + scrollT;
+      const bottom = r.bottom - host.top + scrollT;
+      minTop = minTop == null ? top : Math.min(minTop, top);
+      maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
+    };
+
+    const groups = staffGroups.size
+      ? [...staffGroups]
+      : [...(this.container.querySelectorAll("g.staffline") || [])];
+
+    for (const g of groups) {
+      if (stavesOn) {
+        // Visible notation in this staffline (skip CSS-hidden stave chrome).
+        for (const el of g.querySelectorAll("path, rect, use, text")) {
+          // Only count notehead-ish marks: skip empty staff lines (long thin rects/lines).
+          const r = el.getBoundingClientRect();
+          if (r.height < 2 || r.width < 2) continue;
+          absorb(el);
+        }
+      }
+      if (this.layers.lyrics) {
+        for (const el of g.querySelectorAll(".lyrics, .dash")) absorb(el);
+      }
+      if (this.layers.chords) {
+        for (const el of g.querySelectorAll(".pp-chord")) absorb(el);
+      }
+      if (this.layers.notes) {
+        for (const el of g.querySelectorAll(".pp-annot-note")) absorb(el);
+      }
+    }
+
+    // Always include the active noteheads for X/Y (layout exists even if stave-off).
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const src = gn?.sourceNote || gn?.getSourceNote?.();
+        const isRest =
+          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
+        if (isRest) continue;
+        const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
+        if (!svgEl) continue;
+        if (stavesOn) absorb(svgEl);
+        else {
+          // Stave-off: noteheads are hidden — still use their y as a fallback mid-line.
+          const r = svgEl.getBoundingClientRect();
+          if (!(r.width > 0 || r.height > 0)) continue;
+          if (minTop != null && maxBottom != null) continue;
+          const top = r.top - host.top + scrollT;
+          const bottom = r.bottom - host.top + scrollT;
+          minTop = minTop == null ? top : Math.min(minTop, top);
+          maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    if (minTop == null || maxBottom == null || !(maxBottom > minTop)) {
+      return { left: minLeft, top: 0, bottom: 40 };
+    }
+    // Small pad so the bar clearly brackets the active row(s).
+    const pad = 4;
+    return {
+      left: minLeft,
+      top: Math.max(0, minTop - pad),
+      bottom: maxBottom + pad,
+    };
   }
 
   /**
-   * Place the cursor bar just left of the painted noteheads for the current entry.
+   * Place/size the cursor bar to the current onset: X at noteheads, height spanning
+   * whatever layers are visible on that system (staves / lyrics / chords / notes).
    */
   _nudgeCursorToNoteheads() {
     const el = this.osmd?.cursor?.cursorElement;
     if (!el) return;
-    const bounds = this._noteheadsBoundsUnderCursor();
+    const bounds = this._cursorAlignBounds();
     if (!bounds) return;
+    const height = Math.max(16, bounds.bottom - bounds.top);
     el.style.left = `${Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX)}px`;
+    el.style.top = `${bounds.top}px`;
+    el.style.height = `${height}px`;
+    el.style.width = el.style.width || "2px";
+    el.style.maxHeight = "none";
+    el.style.objectFit = "fill";
   }
 
   /**
@@ -1001,6 +1089,10 @@ export class SheetView {
           LyricsHeight: rules.LyricsHeight,
           LyricsYOffsetToStaffHeight: rules.LyricsYOffsetToStaffHeight,
           LyricsYMarginToBottomLine: rules.LyricsYMarginToBottomLine,
+          PageLeftMargin: rules.PageLeftMargin,
+          SystemLeftMargin: rules.SystemLeftMargin,
+          MeasureLeftMargin: rules.MeasureLeftMargin,
+          ClefLeftMargin: rules.ClefLeftMargin,
           RenderClefsAtBeginningOfStaffline: rules.RenderClefsAtBeginningOfStaffline,
           RenderKeySignatures: rules.RenderKeySignatures,
           RenderTimeSignatures: rules.RenderTimeSignatures,
@@ -1038,6 +1130,11 @@ export class SheetView {
           d.MinSkyBottomDistBetweenSystems ?? 1,
           0.5,
         );
+        // Drop clef/key/time indent so lyric-only view isn't heavily left-padded.
+        rules.PageLeftMargin = Math.min(d.PageLeftMargin ?? 5, 1.5);
+        rules.SystemLeftMargin = 0;
+        rules.MeasureLeftMargin = Math.min(d.MeasureLeftMargin ?? 0.7, 0.25);
+        if (d.ClefLeftMargin != null) rules.ClefLeftMargin = 0;
         rules.RenderSingleHorizontalStaffline = false;
         rules.RenderClefsAtBeginningOfStaffline = false;
         rules.RenderKeySignatures = false;
@@ -1049,6 +1146,10 @@ export class SheetView {
         rules.MinSkyBottomDistBetweenStaves = d.MinSkyBottomDistBetweenStaves;
         rules.MinSkyBottomDistBetweenSystems = d.MinSkyBottomDistBetweenSystems;
         rules.StemWidth = d.StemWidth ?? 0.15;
+        rules.PageLeftMargin = d.PageLeftMargin;
+        rules.SystemLeftMargin = d.SystemLeftMargin;
+        rules.MeasureLeftMargin = d.MeasureLeftMargin;
+        if (d.ClefLeftMargin != null) rules.ClefLeftMargin = d.ClefLeftMargin;
         rules.RenderSingleHorizontalStaffline = !!d.RenderSingleHorizontalStaffline;
         rules.RenderClefsAtBeginningOfStaffline =
           d.RenderClefsAtBeginningOfStaffline !== false;
@@ -1074,6 +1175,15 @@ export class SheetView {
     this.container.classList.toggle("pp-hide-chords", !this.layers.chords);
     this.container.classList.toggle("pp-hide-notes", !this.layers.notes);
     this._packHiddenStavesVertical();
+    // Packing / layer CSS changes layout — re-align the playhead bar.
+    if (this._ready && this.osmd?.cursor) {
+      try {
+        this._nudgeCursorToNoteheads();
+        this._ensureCursorVisible();
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   /** Restore SVG viewBox / size after stave-off packing (or before a fresh pack). */
@@ -1197,18 +1307,20 @@ export class SheetView {
     const userW = (maxRight - minLeft + padX * 2) * pxToUserX;
     const userH = (maxBottom - minTop + padTop + padBottom) * pxToUserY;
 
-    // Prefer full score width so systems stay aligned; only crop vertically.
     const vb = svg.viewBox?.baseVal;
     const fullW = vb && vb.width > 0 ? vb.width : userW;
-    const fullX = vb ? vb.x : Math.min(0, userX);
+    const fullX = vb ? vb.x : 0;
+    // Trim the empty first-system indent (clef/key reserve) when staves are off.
+    const cropX = Math.max(fullX, Math.min(userX, fullX + fullW * 0.35));
+    const cropW = Math.max(40, fullX + fullW - cropX);
     const cropY = Math.max(vb?.y ?? 0, userY);
     const cropH = Math.max(24, userH);
 
-    svg.setAttribute("viewBox", `${fullX} ${cropY} ${fullW} ${cropH}`);
+    svg.setAttribute("viewBox", `${cropX} ${cropY} ${cropW} ${cropH}`);
 
     // Keep horizontal scale: height follows cropped aspect vs displayed width.
-    const displayW = svgRect.width || svg.clientWidth || fullW;
-    const displayH = (cropH / fullW) * displayW;
+    const displayW = svgRect.width || svg.clientWidth || cropW;
+    const displayH = (cropH / cropW) * displayW;
     svg.removeAttribute("height");
     svg.style.height = `${Math.max(48, displayH)}px`;
     svg.style.overflow = "hidden";

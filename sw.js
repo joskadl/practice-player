@@ -1,9 +1,11 @@
 /**
  * Offline shell for MIDI Practice Player (GitHub Pages / PWA).
- * After the first online visit, the app (including the soundfont) is cached.
+ *
+ * App shell (HTML/JS/CSS) is network-first so a normal reload picks up
+ * deploys without a hard refresh. Heavy/static assets stay cache-first.
  */
 
-const CACHE = "midi-practice-player-v16";
+const CACHE = "midi-practice-player-v18";
 
 const PRECACHE = [
   "./",
@@ -11,6 +13,7 @@ const PRECACHE = [
   "./styles.css",
   "./manifest.webmanifest",
   "./js/main.js",
+  "./js/i18n.js",
   "./js/midi-parse.js",
   "./js/musicxml-parse.js",
   "./js/musicxml-edit.js",
@@ -37,6 +40,17 @@ const PRECACHE = [
   "./examples/stille-nacht.musicxml",
 ];
 
+/** True for files that must prefer the network (app code / markup). */
+function isShellRequest(url) {
+  const path = url.pathname;
+  if (path.endsWith("/") || path.endsWith("/index.html")) return true;
+  if (path.endsWith(".html") || path.endsWith(".css") || path.endsWith(".js")) return true;
+  if (path.endsWith(".webmanifest") || path.endsWith("manifest.webmanifest")) return true;
+  // Never cache the service worker script itself via this handler.
+  if (path.endsWith("/sw.js")) return true;
+  return false;
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -61,19 +75,51 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type === "opaque") {
-            return response;
-          }
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(() => caches.match("./index.html"));
-    }),
-  );
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return;
+  }
+  if (url.origin !== self.location.origin) return;
+
+  if (isShellRequest(url)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  event.respondWith(cacheFirst(request));
 });
+
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      const cache = await caches.open(CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (request.mode === "navigate") {
+      return (await caches.match("./index.html")) || Response.error();
+    }
+    return Response.error();
+  }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response && response.status === 200 && response.type !== "opaque") {
+      const cache = await caches.open(CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    return (await caches.match("./index.html")) || Response.error();
+  }
+}
