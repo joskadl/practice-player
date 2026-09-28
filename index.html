@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#2f5d50" />
+  <meta name="description" content="Rehearse MIDI and MusicXML with mute/solo, sheet music, and a built-in choir soundfont." />
+  <title>MIDI Practice Player</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>MIDI Practice Player</h1>
+    </header>
+
+    <section class="panel load-panel">
+      <label class="file-btn">
+        Open file
+        <input id="fileInput" type="file" accept=".mid,.midi,.musicxml,.xml,audio/midi,application/vnd.recordare.musicxml+xml,application/xml,text/xml" hidden />
+      </label>
+      <span id="fileName" class="file-name">No file loaded</span>
+      <label class="inline">
+        Sound
+        <select id="instrumentSelect">
+          <option value="52" selected>Choir Aahs</option>
+          <option value="53">Voice Oohs</option>
+          <option value="0">Acoustic Piano</option>
+          <option value="48">Strings</option>
+          <option value="40">Violin</option>
+          <option value="42">Cello</option>
+          <option value="73">Flute</option>
+        </select>
+      </label>
+      <span id="status" class="status" aria-live="polite"></span>
+    </section>
+
+    <section id="tuningRow" class="panel tuning-panel" hidden>
+      <label class="toggle">
+        <input id="tuningToggle" type="checkbox" />
+        <span class="toggle-ui" aria-hidden="true"></span>
+        <span class="toggle-label">
+          <strong id="tuningModeLabel">Just Intonation</strong>
+          <span class="toggle-sub">vs Standard (12-TET)</span>
+        </span>
+      </label>
+      <p id="tuningHint" class="hint tight"></p>
+    </section>
+
+    <section class="panel transport-panel">
+      <div class="transport-btns">
+        <button type="button" id="playBtn" disabled>Play</button>
+        <button type="button" id="pauseBtn" disabled>Pause</button>
+        <button type="button" id="stopBtn" disabled>Stop</button>
+      </div>
+      <label class="inline">
+        Tempo
+        <input id="tempoPercent" type="range" min="50" max="150" value="100" disabled />
+        <span id="tempoLabel">100%</span>
+      </label>
+      <div class="time-row">
+        <span id="timeLabel">0:00.0</span>
+        <input id="seek" type="range" min="0" max="0" value="0" step="1" disabled />
+        <span id="durationLabel">0:00.0</span>
+      </div>
+    </section>
+
+    <section class="panel score-panel">
+      <div class="voices-head">
+        <h2 id="scoreHeading">Score</h2>
+        <div class="view-toggle" role="group" aria-label="Score view">
+          <button type="button" id="viewRollBtn" class="secondary view-btn" aria-pressed="true" disabled>Piano roll</button>
+          <button type="button" id="viewSheetBtn" class="secondary view-btn" aria-pressed="false" disabled>Sheet music</button>
+        </div>
+        <div id="sheetZoomControls" class="sheet-zoom" hidden>
+          <button type="button" id="sheetZoomOutBtn" class="secondary" title="Zoom out" aria-label="Zoom out">−</button>
+          <span id="sheetZoomLabel" class="sheet-zoom-label">55%</span>
+          <button type="button" id="sheetZoomInBtn" class="secondary" title="Zoom in" aria-label="Zoom in">+</button>
+        </div>
+      </div>
+      <p id="scoreHint" class="hint tight score-hint">Click the timeline to seek. Arrow keys skip onsets. Mute/solo colours apply in both views.</p>
+      <canvas
+        id="pianoRoll"
+        class="piano-roll"
+        width="800"
+        height="220"
+        tabindex="0"
+        role="slider"
+        aria-label="MIDI piano roll timeline — click to seek"
+      ></canvas>
+      <div id="sheetMusic" class="sheet-music" hidden>
+        <p class="hint sheet-placeholder">Load a MusicXML file to see sheet music here.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="voices-head">
+        <h2>Voices</h2>
+        <div class="voice-actions">
+          <button type="button" id="soloClearBtn" disabled>Clear solos</button>
+          <button type="button" id="muteAllBtn" disabled>Mute all</button>
+          <button type="button" id="unmuteAllBtn" disabled>Unmute all</button>
+        </div>
+      </div>
+      <label id="accompRow" class="inline accomp-row" hidden>
+        Other voices
+        <input id="accompPercent" type="range" min="0" max="100" value="25" disabled />
+        <span id="accompLabel">25%</span>
+      </label>
+      <ul id="voiceList" class="voice-list"></ul>
+      <p id="emptyVoices" class="hint">Open a MIDI or MusicXML file to see voices here.</p>
+    </section>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
