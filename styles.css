@@ -28,6 +28,32 @@ body {
     var(--bg);
 }
 
+.lang-toggle {
+  position: fixed;
+  top: 0.65rem;
+  right: 0.75rem;
+  z-index: 40;
+  min-width: 2.4rem;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(28, 26, 23, 0.06);
+}
+
+.lang-toggle:hover,
+.lang-toggle:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
 .app {
   max-width: 56rem;
   margin: 0 auto;
@@ -50,11 +76,7 @@ body {
 }
 
 .offline-hint {
-  margin: 0.45rem 0 0;
-  color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.4;
-  max-width: 40rem;
+  display: none;
 }
 
 .install-btn {
@@ -474,27 +496,43 @@ select {
   overflow: hidden;
 }
 
+/* Hide stave notation chrome — not lyric / chord / note text (those win below). */
 .sheet-music.pp-hide-staves svg path,
 .sheet-music.pp-hide-staves svg rect,
 .sheet-music.pp-hide-staves svg line,
 .sheet-music.pp-hide-staves svg polygon,
 .sheet-music.pp-hide-staves svg polyline,
 .sheet-music.pp-hide-staves svg use,
-.sheet-music.pp-hide-staves svg text,
-.sheet-music.pp-hide-staves svg tspan,
 .sheet-music.pp-hide-staves [class*="vf-"] {
   visibility: hidden !important;
 }
 
-/* Keep lyrics, chord symbols, and practice notes when stave notation is off. */
+/* Keep lyrics, chord symbols, practice notes, and the playhead when staves are off.
+   Must beat `svg path`/`[class*="vf-"]` specificity so text inside .lyrics stays visible. */
 .sheet-music.pp-hide-staves .lyrics,
 .sheet-music.pp-hide-staves .lyrics *,
+.sheet-music.pp-hide-staves .lyrics[class*="vf-"],
+.sheet-music.pp-hide-staves .lyrics [class*="vf-"],
+.sheet-music.pp-hide-staves svg .lyrics text,
+.sheet-music.pp-hide-staves svg .lyrics tspan,
 .sheet-music.pp-hide-staves .dash,
 .sheet-music.pp-hide-staves .dash *,
+.sheet-music.pp-hide-staves .dash[class*="vf-"],
+.sheet-music.pp-hide-staves .dash [class*="vf-"],
+.sheet-music.pp-hide-staves svg .dash text,
+.sheet-music.pp-hide-staves svg .dash tspan,
 .sheet-music.pp-hide-staves .pp-chord,
 .sheet-music.pp-hide-staves .pp-chord *,
+.sheet-music.pp-hide-staves .pp-chord[class*="vf-"],
+.sheet-music.pp-hide-staves .pp-chord [class*="vf-"],
+.sheet-music.pp-hide-staves svg .pp-chord text,
+.sheet-music.pp-hide-staves svg .pp-chord tspan,
 .sheet-music.pp-hide-staves .pp-annot-note,
 .sheet-music.pp-hide-staves .pp-annot-note *,
+.sheet-music.pp-hide-staves .pp-annot-note[class*="vf-"],
+.sheet-music.pp-hide-staves .pp-annot-note [class*="vf-"],
+.sheet-music.pp-hide-staves svg .pp-annot-note text,
+.sheet-music.pp-hide-staves svg .pp-annot-note tspan,
 .sheet-music.pp-hide-staves .osmd-cursor,
 .sheet-music.pp-hide-staves img.osmd-cursor,
 .sheet-music.pp-hide-staves .cursor {

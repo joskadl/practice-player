@@ -96,11 +96,13 @@ function injectExportStyles(svg, layers) {
       staves
         ? ""
         : `
-    path, rect, line, polygon, polyline, use, text, tspan, [class*="vf-"] {
+    path, rect, line, polygon, polyline, use, [class*="vf-"] {
       visibility: hidden !important;
     }
-    .lyrics, .lyrics *, .dash, .dash *,
-    .pp-chord, .pp-chord *, .pp-annot-note, .pp-annot-note * {
+    .lyrics, .lyrics *, svg .lyrics text, svg .lyrics tspan,
+    .dash, .dash *, svg .dash text, svg .dash tspan,
+    .pp-chord, .pp-chord *, svg .pp-chord text, svg .pp-chord tspan,
+    .pp-annot-note, .pp-annot-note *, svg .pp-annot-note text, svg .pp-annot-note tspan {
       visibility: visible !important;
     }
     `
