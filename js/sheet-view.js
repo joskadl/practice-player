@@ -158,6 +158,7 @@ export class SheetView {
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
     this._pending = null;
+    this._svgLayoutBackup = null;
     this.annotMode = null;
     this._setDirty(false);
     this.container.classList.remove(
@@ -1075,27 +1076,66 @@ export class SheetView {
     this._packHiddenStavesVertical();
   }
 
-  /**
-   * When stave notation is hidden, pack each staff's remaining text (lyrics /
-   * chords / notes) so vertical gaps left by the staff geometry collapse.
-   */
-  _packHiddenStavesVertical() {
-    const svg = this.container.querySelector("svg");
+  /** Restore SVG viewBox / size after stave-off packing (or before a fresh pack). */
+  _restoreSvgLayout(svg) {
     if (!svg) return;
-
     const staffGs = [...svg.querySelectorAll("g.staffline")];
     for (const g of staffGs) {
       g.style.transform = "";
       g.style.display = "";
     }
-    svg.style.height = "";
-    svg.style.overflow = "";
+    const bak = this._svgLayoutBackup;
+    if (bak && bak.svg === svg) {
+      if (bak.viewBox != null) svg.setAttribute("viewBox", bak.viewBox);
+      else svg.removeAttribute("viewBox");
+      if (bak.width != null) svg.setAttribute("width", bak.width);
+      else svg.removeAttribute("width");
+      if (bak.height != null) svg.setAttribute("height", bak.height);
+      else svg.removeAttribute("height");
+      svg.style.height = bak.styleHeight || "";
+      svg.style.width = bak.styleWidth || "";
+      svg.style.overflow = bak.styleOverflow || "";
+    } else {
+      svg.style.height = "";
+      svg.style.overflow = "";
+    }
+  }
 
-    if (this.layers.staves || !staffGs.length) return;
+  /**
+   * When stave notation is hidden, pack lyric/chord/note rows and crop the
+   * SVG viewBox to that band — keeping the original horizontal scale so text
+   * stays legible. Never squash the full-score viewBox into a short CSS height
+   * (that uniformly shrinks lyrics to a speck).
+   */
+  _packHiddenStavesVertical() {
+    const svg = this.container.querySelector("svg");
+    if (!svg) return;
 
-    const GAP_PX = 8;
-    const TOP_MARGIN_PX = 10;
-    const BOTTOM_MARGIN_PX = 12;
+    this._restoreSvgLayout(svg);
+
+    if (this.layers.staves) {
+      this._svgLayoutBackup = null;
+      return;
+    }
+
+    const staffGs = [...svg.querySelectorAll("g.staffline")];
+    if (!staffGs.length) return;
+
+    if (!this._svgLayoutBackup || this._svgLayoutBackup.svg !== svg) {
+      this._svgLayoutBackup = {
+        svg,
+        viewBox: svg.getAttribute("viewBox"),
+        width: svg.getAttribute("width"),
+        height: svg.getAttribute("height"),
+        styleHeight: svg.style.height || "",
+        styleWidth: svg.style.width || "",
+        styleOverflow: svg.style.overflow || "",
+      };
+    }
+
+    const GAP_PX = 10;
+    const TOP_MARGIN_PX = 12;
+    const BOTTOM_MARGIN_PX = 14;
 
     /** @type {{ g: SVGGElement, top: number, bottom: number }[]} */
     const rows = [];
@@ -1116,38 +1156,61 @@ export class SheetView {
       rows.push({ g, top, bottom });
     }
 
-    if (!rows.length) {
-      svg.style.height = `${TOP_MARGIN_PX + BOTTOM_MARGIN_PX}px`;
-      svg.style.overflow = "hidden";
-      return;
-    }
+    if (!rows.length) return;
 
     rows.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
 
     const svgRect = svg.getBoundingClientRect();
-    // Screen-px deltas → SVG user units (OSMD applies zoom via a root transform).
-    const pxToUser = (() => {
-      try {
-        const ctm = svg.getScreenCTM?.();
-        if (ctm && Math.abs(ctm.a) > 1e-6) return 1 / ctm.a;
-      } catch {
-        /* ignore */
-      }
-      return 1 / Math.max(0.1, Number(this.zoom) || 1);
-    })();
+    const ctm = svg.getScreenCTM?.();
+    const pxToUserY = ctm && Math.abs(ctm.d) > 1e-6 ? 1 / ctm.d : 1;
+    const pxToUserX = ctm && Math.abs(ctm.a) > 1e-6 ? 1 / ctm.a : 1;
 
     let cursorPx = svgRect.top + TOP_MARGIN_PX;
     for (const row of rows) {
       const deltaPx = cursorPx - row.top;
-      row.g.style.transform = `translateY(${deltaPx * pxToUser}px)`;
+      row.g.style.transform = `translateY(${deltaPx * pxToUserY}px)`;
       cursorPx += row.bottom - row.top + GAP_PX;
     }
 
-    const contentHeightPx = Math.max(
-      TOP_MARGIN_PX + BOTTOM_MARGIN_PX,
-      cursorPx - GAP_PX - svgRect.top + BOTTOM_MARGIN_PX,
-    );
-    svg.style.height = `${contentHeightPx}px`;
+    // Measure packed content in screen space, then map into SVG user units.
+    let minLeft = Infinity;
+    let minTop = Infinity;
+    let maxRight = -Infinity;
+    let maxBottom = -Infinity;
+    for (const row of rows) {
+      for (const el of row.g.querySelectorAll(".lyrics, .dash, .pp-chord, .pp-annot-note")) {
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 0.5 || r.height > 0.5)) continue;
+        minLeft = Math.min(minLeft, r.left);
+        minTop = Math.min(minTop, r.top);
+        maxRight = Math.max(maxRight, r.right);
+        maxBottom = Math.max(maxBottom, r.bottom);
+      }
+    }
+    if (!(maxBottom > minTop) || !(maxRight > minLeft)) return;
+
+    const padX = 8;
+    const padTop = TOP_MARGIN_PX;
+    const padBottom = BOTTOM_MARGIN_PX;
+    const userX = (minLeft - svgRect.left - padX) * pxToUserX;
+    const userY = (minTop - svgRect.top - padTop) * pxToUserY;
+    const userW = (maxRight - minLeft + padX * 2) * pxToUserX;
+    const userH = (maxBottom - minTop + padTop + padBottom) * pxToUserY;
+
+    // Prefer full score width so systems stay aligned; only crop vertically.
+    const vb = svg.viewBox?.baseVal;
+    const fullW = vb && vb.width > 0 ? vb.width : userW;
+    const fullX = vb ? vb.x : Math.min(0, userX);
+    const cropY = Math.max(vb?.y ?? 0, userY);
+    const cropH = Math.max(24, userH);
+
+    svg.setAttribute("viewBox", `${fullX} ${cropY} ${fullW} ${cropH}`);
+
+    // Keep horizontal scale: height follows cropped aspect vs displayed width.
+    const displayW = svgRect.width || svg.clientWidth || fullW;
+    const displayH = (cropH / fullW) * displayW;
+    svg.removeAttribute("height");
+    svg.style.height = `${Math.max(48, displayH)}px`;
     svg.style.overflow = "hidden";
   }
 

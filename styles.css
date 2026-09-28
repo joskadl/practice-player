@@ -494,6 +494,7 @@ select {
 
 .sheet-music.pp-hide-staves svg {
   overflow: hidden;
+  /* Inline height from the packer wins; avoid re-deriving from the full viewBox. */
 }
 
 /* Hide stave notation chrome — not lyric / chord / note text (those win below). */
@@ -605,6 +606,7 @@ select {
 .sheet-music svg {
   max-width: 100%;
   height: auto;
+  display: block;
 }
 
 .pp-editable-text {
