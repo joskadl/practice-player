@@ -127,10 +127,16 @@ export class SheetView {
     this.voiceColor = null;
     this._editInput = null;
     this._editCtx = null;
+    /** @type {HTMLInputElement|null} */
+    this._annotInput = null;
+    /** @type {{kind:"chord"|"note", tick:number}|null} */
+    this._annotCtx = null;
     /** @type {{staves:boolean, lyrics:boolean, chords:boolean, notes:boolean}} */
     this.layers = { ...DEFAULT_LAYERS };
     /** @type {null|"chord"|"note"} */
     this.annotMode = null;
+    /** Cached EngravingRules values to restore when staves layer is re-enabled. */
+    this._engravingDefaults = null;
     this.container.addEventListener("click", (ev) => this._onContainerClick(ev));
   }
 
@@ -142,6 +148,7 @@ export class SheetView {
 
   clear() {
     this._cancelInlineEdit();
+    this._cancelAnnotInput();
     this.xml = null;
     this.instrumentVoices = [];
     this._ready = false;
@@ -827,24 +834,19 @@ export class SheetView {
   }
 
   /**
-   * Click: place annotation in add-mode, otherwise seek.
+   * Click seeks (annotations are started from the + Chord / + Note buttons).
    */
   _onContainerClick(ev) {
     if (!this._ready) return;
-    if (this._editInput) return;
+    if (this._editInput || this._annotInput) return;
     const t = ev.target;
-    if (t?.closest?.(".sheet-inline-edit") || t?.closest?.("[data-pp-edit]")) return;
+    if (t?.closest?.(".sheet-inline-edit") || t?.closest?.(".sheet-annot-input")) return;
+    if (t?.closest?.("[data-pp-edit]")) return;
     if (t?.closest?.("img.osmd-cursor") || t?.classList?.contains?.("cursor")) return;
 
     const hit = this._nearestOnsetAtClient(ev.clientX, ev.clientY);
     if (!hit) return;
     ev.preventDefault();
-
-    if (this.annotMode === "chord" || this.annotMode === "note") {
-      void this._placeAnnotationAtTick(this.annotMode, hit.tick);
-      return;
-    }
-
     if (typeof this.onSeek === "function") this.onSeek(hit.tick);
   }
 
@@ -857,6 +859,100 @@ export class SheetView {
     this.container.classList.toggle("pp-annot-chord", next === "chord");
     this.container.classList.toggle("pp-annot-note", next === "note");
     if (typeof this.onAnnotModeChange === "function") this.onAnnotModeChange(next);
+  }
+
+  /**
+   * Open an inline text field at the current playhead / OSMD cursor and insert
+   * a chord or performance note at that onset when confirmed.
+   * @param {"chord"|"note"} kind
+   */
+  async beginAnnotationAtCursor(kind) {
+    if (!this._ready || !this.xml) return;
+    if (kind !== "chord" && kind !== "note") return;
+    this._cancelAnnotInput();
+    this.setAnnotMode(kind);
+
+    const tick = this._onsetTicks.length
+      ? this._activeOnsetTick(this._lastPlayheadTick)
+      : this._lastPlayheadTick | 0;
+    this.setPlayhead(tick, { scroll: true });
+    await nextFrame();
+    await nextFrame();
+    this._openAnnotInput(kind, tick);
+  }
+
+  _cancelAnnotInput() {
+    if (this._annotInput) {
+      this._annotInput.remove();
+      this._annotInput = null;
+    }
+    this._annotCtx = null;
+    this.setAnnotMode(null);
+  }
+
+  /**
+   * @param {"chord"|"note"} kind
+   * @param {number} tick
+   */
+  _openAnnotInput(kind, tick) {
+    this._cancelInlineEdit();
+    if (this._annotInput) this._annotInput.remove();
+
+    const cs = getComputedStyle(this.container);
+    if (cs.position === "static") this.container.style.position = "relative";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "sheet-annot-input";
+    input.placeholder =
+      kind === "chord" ? "Chord (e.g. Am, G7)" : "Performance note";
+    input.setAttribute(
+      "aria-label",
+      kind === "chord" ? "Chord symbol at cursor" : "Performance note at cursor",
+    );
+    input.value = kind === "chord" ? "" : "";
+
+    const host = this.container.getBoundingClientRect();
+    const cursorEl = this.osmd?.cursor?.cursorElement;
+    let left = 48;
+    let top = 24;
+    if (cursorEl) {
+      const r = cursorEl.getBoundingClientRect();
+      left = r.left - host.left + this.container.scrollLeft + 8;
+      top = Math.max(4, r.top - host.top + this.container.scrollTop - 4);
+    }
+    input.style.left = `${Math.max(0, left)}px`;
+    input.style.top = `${Math.max(0, top)}px`;
+
+    this._annotInput = input;
+    this._annotCtx = { kind, tick };
+    this.container.appendChild(input);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    const finish = (commit) => {
+      if (finished) return;
+      finished = true;
+      const text = input.value.trim();
+      const ctx = this._annotCtx;
+      this._annotInput = null;
+      this._annotCtx = null;
+      input.remove();
+      this.setAnnotMode(null);
+      if (!commit || !text || !ctx) return;
+      void this._commitAnnotationAtTick(ctx.kind, ctx.tick, text);
+    };
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        finish(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener("blur", () => finish(true));
   }
 
   getLayers() {
@@ -888,17 +984,71 @@ export class SheetView {
     if (!this.osmd?.EngravingRules) return;
     try {
       const rules = this.osmd.EngravingRules;
+      if (!this._engravingDefaults) {
+        this._engravingDefaults = {
+          StaffHeight: rules.StaffHeight,
+          BetweenStaffDistance: rules.BetweenStaffDistance,
+          StaffDistance: rules.StaffDistance,
+          MinimumDistanceBetweenSystems: rules.MinimumDistanceBetweenSystems,
+          MinSkyBottomDistBetweenStaves: rules.MinSkyBottomDistBetweenStaves,
+          MinSkyBottomDistBetweenSystems: rules.MinSkyBottomDistBetweenSystems,
+          BetweenStaffLinesDistance: rules.BetweenStaffLinesDistance,
+          StemWidth: rules.StemWidth,
+          StaffLineWidth: rules.StaffLineWidth,
+          LedgerLineWidth: rules.LedgerLineWidth,
+          LyricsYOffsetToStaffHeight: rules.LyricsYOffsetToStaffHeight,
+          LyricsYMarginToBottomLine: rules.LyricsYMarginToBottomLine,
+          RenderClefsAtBeginningOfStaffline: rules.RenderClefsAtBeginningOfStaffline,
+          RenderKeySignatures: rules.RenderKeySignatures,
+          RenderTimeSignatures: rules.RenderTimeSignatures,
+          RenderSingleHorizontalStaffline: rules.RenderSingleHorizontalStaffline,
+        };
+      }
+      const d = this._engravingDefaults;
       rules.RenderLyrics = !!this.layers.lyrics;
       rules.RenderChordSymbols = !!this.layers.chords;
       if (!this.layers.staves) {
+        // Collapse OSMD's staff geometry so lyrics/chords pack tightly; CSS still
+        // hides residual note chrome, and _packHiddenStavesVertical finishes gaps.
         rules.StaffLineWidth = 0;
         rules.LedgerLineWidth = 0;
-        if (typeof rules.BetweenStaffDistance === "number") {
-          rules.BetweenStaffDistance = Math.min(rules.BetweenStaffDistance || 5, 2.2);
+        rules.StemWidth = 0;
+        rules.StaffHeight = 0.6;
+        rules.BetweenStaffLinesDistance = 0.12;
+        rules.BetweenStaffDistance = 0.25;
+        rules.StaffDistance = 0.35;
+        rules.MinimumDistanceBetweenSystems = 0.35;
+        rules.MinSkyBottomDistBetweenStaves = 0.12;
+        rules.MinSkyBottomDistBetweenSystems = 0.2;
+        rules.LyricsYOffsetToStaffHeight = 0;
+        rules.LyricsYMarginToBottomLine = 0.05;
+        rules.RenderSingleHorizontalStaffline = true;
+        rules.RenderClefsAtBeginningOfStaffline = false;
+        rules.RenderKeySignatures = false;
+        rules.RenderTimeSignatures = false;
+      } else {
+        rules.StaffHeight = d.StaffHeight;
+        rules.BetweenStaffDistance = d.BetweenStaffDistance;
+        rules.StaffDistance = d.StaffDistance;
+        rules.MinimumDistanceBetweenSystems = d.MinimumDistanceBetweenSystems;
+        rules.MinSkyBottomDistBetweenStaves = d.MinSkyBottomDistBetweenStaves;
+        rules.MinSkyBottomDistBetweenSystems = d.MinSkyBottomDistBetweenSystems;
+        rules.BetweenStaffLinesDistance = d.BetweenStaffLinesDistance;
+        rules.StemWidth = d.StemWidth ?? 0.15;
+        rules.LyricsYOffsetToStaffHeight = d.LyricsYOffsetToStaffHeight;
+        rules.LyricsYMarginToBottomLine = d.LyricsYMarginToBottomLine;
+        rules.RenderSingleHorizontalStaffline = !!d.RenderSingleHorizontalStaffline;
+        rules.RenderClefsAtBeginningOfStaffline =
+          d.RenderClefsAtBeginningOfStaffline !== false;
+        rules.RenderKeySignatures = d.RenderKeySignatures !== false;
+        rules.RenderTimeSignatures = d.RenderTimeSignatures !== false;
+        if (this.showStaffLines) {
+          rules.StaffLineWidth = d.StaffLineWidth ?? 0.1;
+          rules.LedgerLineWidth = d.LedgerLineWidth ?? 1;
+        } else {
+          rules.StaffLineWidth = 0;
+          rules.LedgerLineWidth = 0;
         }
-      } else if (this.showStaffLines) {
-        rules.StaffLineWidth = 0.1;
-        rules.LedgerLineWidth = 1;
       }
     } catch {
       /* ignore */
@@ -911,6 +1061,72 @@ export class SheetView {
     this.container.classList.toggle("pp-hide-lyrics", !this.layers.lyrics);
     this.container.classList.toggle("pp-hide-chords", !this.layers.chords);
     this.container.classList.toggle("pp-hide-notes", !this.layers.notes);
+    this._packHiddenStavesVertical();
+  }
+
+  /**
+   * When stave notation is hidden, pack each staff's remaining text (lyrics /
+   * chords / notes) so vertical gaps left by the staff geometry collapse.
+   */
+  _packHiddenStavesVertical() {
+    const svg = this.container.querySelector("svg");
+    if (!svg) return;
+
+    const staffGs = [...svg.querySelectorAll("g.staffline")];
+    for (const g of staffGs) {
+      g.style.transform = "";
+      g.style.display = "";
+    }
+    svg.style.height = "";
+    svg.style.overflow = "";
+
+    if (this.layers.staves || !staffGs.length) return;
+
+    const GAP_PX = 6;
+    const TOP_MARGIN_PX = 8;
+    const BOTTOM_MARGIN_PX = 10;
+
+    /** @type {{ g: SVGGElement, top: number, bottom: number }[]} */
+    const rows = [];
+    for (const g of staffGs) {
+      const keep = g.querySelectorAll(".lyrics, .dash, .pp-chord, .pp-annot-note");
+      let top = Infinity;
+      let bottom = -Infinity;
+      for (const el of keep) {
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 0 || r.height > 0)) continue;
+        top = Math.min(top, r.top);
+        bottom = Math.max(bottom, r.bottom);
+      }
+      if (!(bottom > top) || !Number.isFinite(top)) {
+        g.style.display = "none";
+        continue;
+      }
+      rows.push({ g, top, bottom });
+    }
+
+    if (!rows.length) {
+      svg.style.height = `${TOP_MARGIN_PX + BOTTOM_MARGIN_PX}px`;
+      svg.style.overflow = "hidden";
+      return;
+    }
+
+    rows.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
+
+    const svgRect = svg.getBoundingClientRect();
+    let cursor = svgRect.top + TOP_MARGIN_PX;
+    for (const row of rows) {
+      const delta = cursor - row.top;
+      row.g.style.transform = `translateY(${delta}px)`;
+      cursor += row.bottom - row.top + GAP_PX;
+    }
+
+    const contentHeight = Math.max(
+      TOP_MARGIN_PX + BOTTOM_MARGIN_PX,
+      cursor - GAP_PX - svgRect.top + BOTTOM_MARGIN_PX,
+    );
+    svg.style.height = `${contentHeight}px`;
+    svg.style.overflow = "hidden";
   }
 
   /**
@@ -962,37 +1178,46 @@ export class SheetView {
   /**
    * @param {"chord"|"note"} kind
    * @param {number} tick
+   * @param {string} text
    */
-  async _placeAnnotationAtTick(kind, tick) {
-    const promptLabel =
-      kind === "chord" ? "Chord symbol (e.g. Am, G7, Fmaj7)" : "Performance note text";
-    const def = kind === "chord" ? "C" : "";
-    const value = globalThis.prompt?.(promptLabel, def);
-    this.setAnnotMode(null);
-    if (value == null) return;
-    const text = String(value).trim();
-    if (!text) return;
+  async _commitAnnotationAtTick(kind, tick, text) {
+    const value = String(text || "").trim();
+    if (!value) return;
+
+    // Make sure the new annotation's layer is visible after reload.
+    const layerPatch =
+      kind === "chord" ? { chords: true } : { notes: true };
+    if (
+      (kind === "chord" && !this.layers.chords) ||
+      (kind === "note" && !this.layers.notes)
+    ) {
+      this.layers = { ...this.layers, ...layerPatch };
+      if (typeof this.onLayersChange === "function") {
+        this.onLayersChange({ ...this.layers });
+      }
+    }
 
     let baseXml = this.dirty ? this.buildEditedXml() : this.xml;
     if (!baseXml) return;
-    // buildEditedXml already writes layers; for clean xml write layers too.
     if (!this.dirty) baseXml = writeAnnotationLayers(baseXml, this.layers);
 
+    const onset = this._onsetTicks.length ? this._activeOnsetTick(tick) : tick | 0;
     let nextXml;
     try {
       nextXml =
         kind === "chord"
-          ? insertHarmonyAtTick(baseXml, tick, text)
-          : insertDirectionWordsAtTick(baseXml, tick, text);
+          ? insertHarmonyAtTick(baseXml, onset, value)
+          : insertDirectionWordsAtTick(baseXml, onset, value);
+      nextXml = writeAnnotationLayers(nextXml, this.layers);
     } catch (err) {
       console.warn(err);
       return;
     }
 
     this._setDirty(true);
-    if (typeof this.onSeek === "function") this.onSeek(tick);
+    if (typeof this.onSeek === "function") this.onSeek(onset);
     if (typeof this.onXmlMutated === "function") {
-      await this.onXmlMutated(nextXml, kind === "chord" ? `Chord ${text}` : `Note: ${text}`);
+      await this.onXmlMutated(nextXml, kind === "chord" ? `Chord ${value}` : `Note: ${value}`);
     }
   }
 

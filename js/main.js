@@ -598,7 +598,7 @@ function updateScoreViewUi() {
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
   els.scoreHeading.textContent = showSheet ? "Sheet music" : "Piano roll";
   els.scoreHint.textContent = showSheet
-    ? "Click a note to seek. + Chord / + Note then click the score to annotate. Toggle Staves · Lyrics · Chords · Notes."
+    ? "Click a note to seek. + Chord / + Note opens text at the cursor. Toggle Staves · Lyrics · Chords · Notes."
     : hasSheet
       ? "Click the timeline to seek. Switch to Sheet music for the score. Mute/solo colours apply in both views."
       : "Click the timeline to seek. Arrow keys skip onsets. Load MusicXML for sheet music.";
@@ -974,11 +974,11 @@ wireLayerToggle(els.layerNotesBtn, "notes");
 
 els.addChordBtn?.addEventListener("click", () => {
   if (!sheet.hasScore()) return;
-  sheet.setAnnotMode(sheet.annotMode === "chord" ? null : "chord");
+  void sheet.beginAnnotationAtCursor("chord");
 });
 els.addNoteBtn?.addEventListener("click", () => {
   if (!sheet.hasScore()) return;
-  sheet.setAnnotMode(sheet.annotMode === "note" ? null : "note");
+  void sheet.beginAnnotationAtCursor("note");
 });
 
 els.instrumentSelect.addEventListener("change", () => {

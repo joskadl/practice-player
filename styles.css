@@ -470,24 +470,35 @@ select {
   border-color: var(--accent, #2f5d50);
 }
 
-.sheet-music.pp-annot-chord,
-.sheet-music.pp-annot-note {
-  cursor: crosshair;
+.sheet-music.pp-hide-staves svg {
+  overflow: hidden;
 }
 
-.sheet-music.pp-hide-staves .vf-stavenote,
-.sheet-music.pp-hide-staves .vf-note,
-.sheet-music.pp-hide-staves .vf-notehead,
-.sheet-music.pp-hide-staves .vf-stem,
-.sheet-music.pp-hide-staves .vf-beam,
-.sheet-music.pp-hide-staves .vf-flag,
-.sheet-music.pp-hide-staves .vf-clef,
-.sheet-music.pp-hide-staves .vf-keysignature,
-.sheet-music.pp-hide-staves .vf-timesignature,
-.sheet-music.pp-hide-staves .vf-modifiers,
-.sheet-music.pp-hide-staves .staffline line {
-  opacity: 0 !important;
-  pointer-events: none !important;
+.sheet-music.pp-hide-staves svg path,
+.sheet-music.pp-hide-staves svg rect,
+.sheet-music.pp-hide-staves svg line,
+.sheet-music.pp-hide-staves svg polygon,
+.sheet-music.pp-hide-staves svg polyline,
+.sheet-music.pp-hide-staves svg use,
+.sheet-music.pp-hide-staves svg text,
+.sheet-music.pp-hide-staves svg tspan,
+.sheet-music.pp-hide-staves [class*="vf-"] {
+  visibility: hidden !important;
+}
+
+/* Keep lyrics, chord symbols, and practice notes when stave notation is off. */
+.sheet-music.pp-hide-staves .lyrics,
+.sheet-music.pp-hide-staves .lyrics *,
+.sheet-music.pp-hide-staves .dash,
+.sheet-music.pp-hide-staves .dash *,
+.sheet-music.pp-hide-staves .pp-chord,
+.sheet-music.pp-hide-staves .pp-chord *,
+.sheet-music.pp-hide-staves .pp-annot-note,
+.sheet-music.pp-hide-staves .pp-annot-note *,
+.sheet-music.pp-hide-staves .osmd-cursor,
+.sheet-music.pp-hide-staves img.osmd-cursor,
+.sheet-music.pp-hide-staves .cursor {
+  visibility: visible !important;
 }
 
 .sheet-music.pp-hide-lyrics .lyrics,
@@ -522,6 +533,7 @@ select {
   justify-content: center;
   margin-left: 0.15rem;
 }
+
 
 .view-btn[aria-pressed="true"] {
   background: var(--accent);
@@ -566,6 +578,22 @@ select {
   color: var(--ink);
   background: #fffef9;
   box-shadow: 0 2px 8px rgba(28, 26, 23, 0.12);
+}
+
+.sheet-annot-input {
+  position: absolute;
+  z-index: 35;
+  min-width: 7.5rem;
+  max-width: 14rem;
+  margin: 0;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: #fffef8;
+  box-shadow: 0 2px 10px rgba(28, 26, 23, 0.15);
 }
 
 .tuning-panel {
