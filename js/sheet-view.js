@@ -997,6 +997,7 @@ export class SheetView {
           StemWidth: rules.StemWidth,
           StaffLineWidth: rules.StaffLineWidth,
           LedgerLineWidth: rules.LedgerLineWidth,
+          LyricsHeight: rules.LyricsHeight,
           LyricsYOffsetToStaffHeight: rules.LyricsYOffsetToStaffHeight,
           LyricsYMarginToBottomLine: rules.LyricsYMarginToBottomLine,
           RenderClefsAtBeginningOfStaffline: rules.RenderClefsAtBeginningOfStaffline,
@@ -1008,36 +1009,45 @@ export class SheetView {
       const d = this._engravingDefaults;
       rules.RenderLyrics = !!this.layers.lyrics;
       rules.RenderChordSymbols = !!this.layers.chords;
+      // Always keep staff + lyric metrics at their normal size. Shrinking
+      // StaffHeight also shrinks lyric glyphs (OSMD scales text with the staff),
+      // which produced the microscopic "smudge" when staves were toggled off.
+      rules.StaffHeight = d.StaffHeight;
+      if (d.LyricsHeight != null) rules.LyricsHeight = d.LyricsHeight;
+      rules.LyricsYOffsetToStaffHeight = d.LyricsYOffsetToStaffHeight;
+      rules.LyricsYMarginToBottomLine = d.LyricsYMarginToBottomLine;
+      rules.BetweenStaffLinesDistance = d.BetweenStaffLinesDistance;
       if (!this.layers.staves) {
-        // Collapse OSMD's staff geometry so lyrics/chords pack tightly; CSS still
-        // hides residual note chrome, and _packHiddenStavesVertical finishes gaps.
+        // Hide notation via CSS; only suppress engraving chrome OSMD can omit.
+        // Vertical packing (_packHiddenStavesVertical) collapses the empty staff gaps.
         rules.StaffLineWidth = 0;
         rules.LedgerLineWidth = 0;
         rules.StemWidth = 0;
-        rules.StaffHeight = 0.6;
-        rules.BetweenStaffLinesDistance = 0.12;
-        rules.BetweenStaffDistance = 0.25;
-        rules.StaffDistance = 0.35;
-        rules.MinimumDistanceBetweenSystems = 0.35;
-        rules.MinSkyBottomDistBetweenStaves = 0.12;
-        rules.MinSkyBottomDistBetweenSystems = 0.2;
-        rules.LyricsYOffsetToStaffHeight = 0;
-        rules.LyricsYMarginToBottomLine = 0.05;
-        rules.RenderSingleHorizontalStaffline = true;
+        rules.BetweenStaffDistance = Math.min(d.BetweenStaffDistance ?? 5, 2.5);
+        rules.StaffDistance = Math.min(d.StaffDistance ?? 5, 2.5);
+        rules.MinimumDistanceBetweenSystems = Math.min(
+          d.MinimumDistanceBetweenSystems ?? 5,
+          2.5,
+        );
+        rules.MinSkyBottomDistBetweenStaves = Math.min(
+          d.MinSkyBottomDistBetweenStaves ?? 1,
+          0.5,
+        );
+        rules.MinSkyBottomDistBetweenSystems = Math.min(
+          d.MinSkyBottomDistBetweenSystems ?? 1,
+          0.5,
+        );
+        rules.RenderSingleHorizontalStaffline = false;
         rules.RenderClefsAtBeginningOfStaffline = false;
         rules.RenderKeySignatures = false;
         rules.RenderTimeSignatures = false;
       } else {
-        rules.StaffHeight = d.StaffHeight;
         rules.BetweenStaffDistance = d.BetweenStaffDistance;
         rules.StaffDistance = d.StaffDistance;
         rules.MinimumDistanceBetweenSystems = d.MinimumDistanceBetweenSystems;
         rules.MinSkyBottomDistBetweenStaves = d.MinSkyBottomDistBetweenStaves;
         rules.MinSkyBottomDistBetweenSystems = d.MinSkyBottomDistBetweenSystems;
-        rules.BetweenStaffLinesDistance = d.BetweenStaffLinesDistance;
         rules.StemWidth = d.StemWidth ?? 0.15;
-        rules.LyricsYOffsetToStaffHeight = d.LyricsYOffsetToStaffHeight;
-        rules.LyricsYMarginToBottomLine = d.LyricsYMarginToBottomLine;
         rules.RenderSingleHorizontalStaffline = !!d.RenderSingleHorizontalStaffline;
         rules.RenderClefsAtBeginningOfStaffline =
           d.RenderClefsAtBeginningOfStaffline !== false;
@@ -1083,9 +1093,9 @@ export class SheetView {
 
     if (this.layers.staves || !staffGs.length) return;
 
-    const GAP_PX = 6;
-    const TOP_MARGIN_PX = 8;
-    const BOTTOM_MARGIN_PX = 10;
+    const GAP_PX = 8;
+    const TOP_MARGIN_PX = 10;
+    const BOTTOM_MARGIN_PX = 12;
 
     /** @type {{ g: SVGGElement, top: number, bottom: number }[]} */
     const rows = [];
@@ -1095,7 +1105,7 @@ export class SheetView {
       let bottom = -Infinity;
       for (const el of keep) {
         const r = el.getBoundingClientRect();
-        if (!(r.width > 0 || r.height > 0)) continue;
+        if (!(r.width > 0.5 || r.height > 0.5)) continue;
         top = Math.min(top, r.top);
         bottom = Math.max(bottom, r.bottom);
       }
@@ -1115,18 +1125,29 @@ export class SheetView {
     rows.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
 
     const svgRect = svg.getBoundingClientRect();
-    let cursor = svgRect.top + TOP_MARGIN_PX;
+    // Screen-px deltas → SVG user units (OSMD applies zoom via a root transform).
+    const pxToUser = (() => {
+      try {
+        const ctm = svg.getScreenCTM?.();
+        if (ctm && Math.abs(ctm.a) > 1e-6) return 1 / ctm.a;
+      } catch {
+        /* ignore */
+      }
+      return 1 / Math.max(0.1, Number(this.zoom) || 1);
+    })();
+
+    let cursorPx = svgRect.top + TOP_MARGIN_PX;
     for (const row of rows) {
-      const delta = cursor - row.top;
-      row.g.style.transform = `translateY(${delta}px)`;
-      cursor += row.bottom - row.top + GAP_PX;
+      const deltaPx = cursorPx - row.top;
+      row.g.style.transform = `translateY(${deltaPx * pxToUser}px)`;
+      cursorPx += row.bottom - row.top + GAP_PX;
     }
 
-    const contentHeight = Math.max(
+    const contentHeightPx = Math.max(
       TOP_MARGIN_PX + BOTTOM_MARGIN_PX,
-      cursor - GAP_PX - svgRect.top + BOTTOM_MARGIN_PX,
+      cursorPx - GAP_PX - svgRect.top + BOTTOM_MARGIN_PX,
     );
-    svg.style.height = `${contentHeight}px`;
+    svg.style.height = `${contentHeightPx}px`;
     svg.style.overflow = "hidden";
   }
 
