@@ -3,7 +3,7 @@
  * After the first online visit, the app (including the soundfont) is cached.
  */
 
-const CACHE = "midi-practice-player-v13";
+const CACHE = "midi-practice-player-v14";
 
 const PRECACHE = [
   "./",
@@ -15,6 +15,7 @@ const PRECACHE = [
   "./js/musicxml-parse.js",
   "./js/musicxml-edit.js",
   "./js/musicxml-annotate.js",
+  "./js/sheet-pdf-export.js",
   "./js/ji-retune.js",
   "./js/transport.js",
   "./js/synth.js",

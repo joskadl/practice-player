@@ -13,6 +13,7 @@ import {
   insertHarmonyAtTick,
   insertDirectionWordsAtTick,
 } from "./musicxml-annotate.js";
+import { exportSheetViewPdf } from "./sheet-pdf-export.js";
 
 const MUTED_COLOR = "#b0b0b0";
 const WIDTH_FALLBACK = 640;
@@ -1504,6 +1505,19 @@ export class SheetView {
     } catch {
       /* ignore */
     }
+  }
+
+  /**
+   * Export the currently viewed sheet (voice hide + layers) as a B&W PDF.
+   * @param {{fileName?: string}} [opts]
+   * @returns {Promise<string>} downloaded file name
+   */
+  async exportBwPdf(opts = {}) {
+    if (!this.hasScore()) throw new Error("No sheet music loaded");
+    return exportSheetViewPdf(this.container, {
+      layers: this.getLayers(),
+      fileName: opts.fileName || "score.pdf",
+    });
   }
 
   hasScore() {

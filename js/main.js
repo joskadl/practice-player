@@ -60,6 +60,7 @@ const els = {
   sheetZoomOutBtn: document.getElementById("sheetZoomOutBtn"),
   sheetZoomInBtn: document.getElementById("sheetZoomInBtn"),
   sheetZoomLabel: document.getElementById("sheetZoomLabel"),
+  sheetPdfBtn: document.getElementById("sheetPdfBtn"),
   sheetSaveBtn: document.getElementById("sheetSaveBtn"),
   sheetAnnotBar: document.getElementById("sheetAnnotBar"),
   layerStavesBtn: document.getElementById("layerStavesBtn"),
@@ -961,6 +962,26 @@ els.sheetZoomOutBtn?.addEventListener("click", async () => {
 els.sheetZoomInBtn?.addEventListener("click", async () => {
   await sheet.zoomBy(0.1);
   updateSheetZoomLabel();
+});
+
+els.sheetPdfBtn?.addEventListener("click", async () => {
+  if (!sheet.hasScore()) return;
+  const base = (sourceFileName || "score").replace(/\.(musicxml|xml|mid|midi)$/i, "") || "score";
+  const layers = sheet.getLayers();
+  const bits = [];
+  if (!layers.staves) bits.push("text");
+  if (hiddenVoices.size) bits.push("voices");
+  const suffix = bits.length ? `-${bits.join("-")}` : "";
+  els.sheetPdfBtn.disabled = true;
+  try {
+    setStatus("Exporting PDF…");
+    const name = await sheet.exportBwPdf({ fileName: `${base}${suffix}.pdf` });
+    setStatus(`Exported ${name}`);
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  } finally {
+    els.sheetPdfBtn.disabled = false;
+  }
 });
 
 els.sheetSaveBtn?.addEventListener("click", () => {
