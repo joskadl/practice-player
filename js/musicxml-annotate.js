@@ -146,7 +146,9 @@ export function parseChordSymbol(raw) {
 }
 
 /**
- * Locate the insert point in a part at (or just before) ``tick``.
+ * Locate the insert point in a part at the note onset for ``tick``.
+ * Harmony / direction is inserted immediately before that note so OSMD
+ * renders it at the same musical position as the playhead.
  * @returns {{ partEl: Element, measureEl: Element, beforeNode: ChildNode|null, divisions: number }|null}
  */
 function locateInsertPoint(doc, tick, partId) {
@@ -162,12 +164,17 @@ function locateInsertPoint(doc, tick, partId) {
   const target = Math.max(0, tick | 0);
   let absTick = 0;
   let divisions = 480;
+  let beats = 4;
+  let beatType = 4;
+  /** @type {{ el: Element, start: number, measureEl: Element, divisions: number }[]} */
+  const candidates = [];
   const measures = childrenByName(partEl, "measure");
 
+  // Mirror musicxml-parse.js measure timeline so playhead ticks match note onsets
+  // (including pickup / incomplete measures that pad to the written time signature).
   for (const measure of measures) {
     const measureStart = absTick;
     let cursor = measureStart;
-    let best = null;
 
     for (const child of [...measure.childNodes]) {
       if (child.nodeType !== 1) continue;
@@ -177,6 +184,13 @@ function locateInsertPoint(doc, tick, partId) {
       if (tag === "attributes") {
         const d = Number(firstChild(el, "divisions")?.textContent || 0);
         if (d > 0) divisions = d;
+        const timeEl = firstChild(el, "time");
+        if (timeEl) {
+          const b = Number(firstChild(timeEl, "beats")?.textContent || 0);
+          const bt = Number(firstChild(timeEl, "beat-type")?.textContent || 0);
+          if (b > 0) beats = b;
+          if (bt > 0) beatType = bt;
+        }
         continue;
       }
       if (tag === "backup") {
@@ -188,46 +202,45 @@ function locateInsertPoint(doc, tick, partId) {
         cursor += Number(firstChild(el, "duration")?.textContent || 0);
         continue;
       }
-      if (tag === "note") {
-        const isChord = !!firstChild(el, "chord");
-        const isGrace = !!firstChild(el, "grace");
-        const dur = isGrace ? 0 : Number(firstChild(el, "duration")?.textContent || 0);
-        const start = cursor;
-        if (start <= target) {
-          best = { beforeNode: el, at: start };
-        }
-        if (!isChord) cursor += dur;
-        // If we've passed the target and have a slot, stop this measure's search for later notes
-        if (start > target && best) break;
-        continue;
-      }
-      if (tag === "harmony" || tag === "direction") {
-        if (cursor <= target) best = { beforeNode: el, at: cursor };
-      }
-    }
+      if (tag !== "note") continue;
 
-    absTick = Math.max(absTick, cursor);
-    // Prefer a measure that contains the target tick.
-    const measureEnd = Math.max(cursor, measureStart);
-    if (target >= measureStart && target <= measureEnd + divisions * 8) {
-      if (best) {
-        return { partEl, measureEl: measure, beforeNode: best.beforeNode, divisions };
+      const isChord = !!firstChild(el, "chord");
+      const isGrace = !!firstChild(el, "grace");
+      const isRest = !!firstChild(el, "rest");
+      const dur = isGrace ? 0 : Number(firstChild(el, "duration")?.textContent || 0);
+      const start = cursor;
+      if (!isGrace && !isRest) {
+        candidates.push({ el, start, measureEl: measure, divisions });
       }
-      // Insert after attributes / at end of measure content.
-      const attrs = firstChild(measure, "attributes");
-      return {
-        partEl,
-        measureEl: measure,
-        beforeNode: attrs ? attrs.nextSibling : measure.firstChild,
-        divisions,
-      };
+      if (!isChord) cursor += dur;
     }
+    const measureLen = Math.max(1, Math.round(divisions * beats * (4 / beatType)));
+    absTick = measureStart + measureLen;
   }
 
-  // Fallback: last measure end.
-  const last = measures[measures.length - 1];
-  if (!last) return null;
-  return { partEl, measureEl: last, beforeNode: null, divisions };
+  if (!candidates.length) {
+    const last = measures[measures.length - 1];
+    if (!last) return null;
+    return { partEl, measureEl: last, beforeNode: null, divisions };
+  }
+
+  // Prefer the pitched note that starts exactly at the playhead onset.
+  let chosen =
+    candidates.find((c) => c.start === target) ||
+    [...candidates].reverse().find((c) => c.start <= target) ||
+    candidates.find((c) => c.start > target) ||
+    null;
+
+  if (!chosen) {
+    const last = measures[measures.length - 1];
+    return { partEl, measureEl: last, beforeNode: null, divisions };
+  }
+  return {
+    partEl,
+    measureEl: chosen.measureEl,
+    beforeNode: chosen.el,
+    divisions: chosen.divisions,
+  };
 }
 
 function buildHarmonyEl(doc, chordText) {
