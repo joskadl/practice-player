@@ -1,5 +1,6 @@
 /**
- * Soft real-time tick clock (same idea as JustPlay's MIDI project scheduler).
+ * Soft real-time tick clock driven by the AudioContext (when available)
+ * or performance.now(), advanced on requestAnimationFrame for stable timing.
  */
 
 const PB_CENTER = 8192;
@@ -22,14 +23,32 @@ export class Transport {
     this.playheadTick = 0;
     this.tempoPercent = 100;
     this.applyPitchBends = true;
-    this._timer = null;
-    this._anchorPerf = 0;
+    /** @type {AudioContext|null} */
+    this._audioCtx = null;
+    this._raf = 0;
+    /** Wall / audio seconds at last anchor. */
+    this._anchorTime = 0;
     this._anchorTick = 0;
     this._lastTick = 0;
     this._sounding = new Map();
     this._auditionTimers = [];
     /** When true, the next ``_advance`` includes notes/bends at ``_lastTick`` (Play/seek start). */
     this._includeStartTick = false;
+  }
+
+  /** Prefer AudioContext.currentTime for a clock that tracks the audio thread. */
+  setAudioContext(ctx) {
+    this._audioCtx = ctx || null;
+  }
+
+  _nowSec() {
+    // AudioContext.currentTime is the clock that drives note scheduling — prefer it
+    // whenever the context exists so UI playhead and audio stay locked.
+    const ctx = this._audioCtx;
+    if (ctx && typeof ctx.currentTime === "number") {
+      return ctx.currentTime;
+    }
+    return performance.now() / 1000;
   }
 
   setProject(project) {
@@ -59,7 +78,7 @@ export class Transport {
     const next = Math.max(25, Math.min(200, pct | 0));
     if (this.playing) {
       this._anchorTick = this.currentTick();
-      this._anchorPerf = performance.now();
+      this._anchorTime = this._nowSec();
     }
     this.tempoPercent = next;
   }
@@ -121,23 +140,34 @@ export class Transport {
 
   currentTick() {
     if (!this.playing || !this.project) return this.playheadTick;
-    const elapsedSec = (performance.now() - this._anchorPerf) / 1000;
-    const rate = this.tempoPercent / 100;
+    const elapsedSec = Math.max(0, this._nowSec() - this._anchorTime);
+    const rate = Math.max(0.25, this.tempoPercent / 100);
+    // Absolute time from a fixed anchor (no per-frame accumulation) → no drift.
     return this._tickAfterSeconds(this._anchorTick, elapsedSec * rate);
   }
 
   _tickAfterSeconds(fromTick, seconds) {
     const { durationTicks } = this.project;
     if (seconds <= 0) return fromTick;
+    // Fast path: constant tempo map of length 1.
+    if ((this.project.tempoMap?.length || 0) <= 1) {
+      const tpb = this.project.ticksPerBeat || 480;
+      const us = this.project.tempoMap?.[0]?.usPerBeat || 500_000;
+      const secPerTick = us / 1_000_000 / tpb;
+      if (secPerTick > 0) {
+        // Floor (not round) so notes fire at/after their tick, never early from rounding.
+        return Math.min(durationTicks, fromTick + Math.floor(seconds / secPerTick + 1e-9));
+      }
+    }
     let lo = fromTick;
     let hi = durationTicks;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 48; i++) {
       const mid = (lo + hi) / 2;
       const dt = this._secondsBetween(fromTick, mid);
       if (dt < seconds) lo = mid;
       else hi = mid;
     }
-    return Math.min(durationTicks, Math.round(hi));
+    return Math.min(durationTicks, Math.floor(hi + 1e-9));
   }
 
   _secondsBetween(a, b) {
@@ -151,21 +181,32 @@ export class Transport {
     this._clearAudition();
     this._silence({ panic: true });
     this.playing = true;
-    this._anchorPerf = performance.now();
+    this._anchorTime = this._nowSec();
     this._anchorTick = this.playheadTick;
     this._lastTick = this.playheadTick;
     // Inclusive first window so notes at the playhead (e.g. tick 0) fire on Play.
     this._includeStartTick = true;
     this._restorePitchBendsAt(this.playheadTick);
-    this._timer = setInterval(() => this._advance(), 10);
+    this._scheduleFrame();
+  }
+
+  _scheduleFrame() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    const loop = () => {
+      this._raf = 0;
+      if (!this.playing) return;
+      this._advance();
+      if (this.playing) this._raf = requestAnimationFrame(loop);
+    };
+    this._raf = requestAnimationFrame(loop);
   }
 
   pause({ keepPlayhead = false } = {}) {
     if (!this.playing) return;
     const tick = this.currentTick();
     this.playing = false;
-    if (this._timer) clearInterval(this._timer);
-    this._timer = null;
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = 0;
     if (!keepPlayhead) this.playheadTick = tick;
     this._clearAudition();
     this._silence({ panic: true });
@@ -257,8 +298,9 @@ export class Transport {
     for (const note of this.project.notes) {
       if (note.end > from && note.end <= to) {
         if (this._sounding.has(note.id)) {
+          const held = this._sounding.get(note.id);
           this._sounding.delete(note.id);
-          this.handlers.onNoteOff(note);
+          this.handlers.onNoteOff(held);
         }
       }
     }
