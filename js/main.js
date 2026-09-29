@@ -59,7 +59,7 @@ const els = {
   playBtn: document.getElementById("playBtn"),
   pauseBtn: document.getElementById("pauseBtn"),
   stopBtn: document.getElementById("stopBtn"),
-  tempoPercent: document.getElementById("tempoPercent"),
+  tempoBpm: document.getElementById("tempoBpm"),
   tempoLabel: document.getElementById("tempoLabel"),
   seek: document.getElementById("seek"),
   timeLabel: document.getElementById("timeLabel"),
@@ -444,6 +444,7 @@ function updateAccompUi() {
 }
 
 function seekTo(tick) {
+  lastSheetOnsetTick = -1;
   transport.seek(tick);
   roll.setPlayhead(transport.playheadTick);
   syncSheetPlayhead(transport.playheadTick, { scroll: true });
@@ -696,7 +697,7 @@ async function auditionOnset(tick) {
   if (!project || transport.playing) return;
   try {
     await synth.ensure();
-    synth.setProgram(Number(els.instrumentSelect.value));
+    applyInstrumentSelection();
     if (project.hasPitchBends) {
       synth.setPitchBendRange(project.pitchBendRange, project.bendRangeByChannel);
       transport.setApplyPitchBends(jiEnabled);
@@ -730,12 +731,37 @@ const transport = new Transport({
     els.seek.value = String(tick);
     els.timeLabel.textContent = formatTime(project.secondsAt(tick));
     roll.setPlayhead(tick);
-    syncSheetPlayhead(tick, { scroll: true });
+    // Sheet cursor is onset-based — skip DOM work between notes (keeps audio steady).
+    if (scoreView === "sheet" && sheet.hasScore()) {
+      const onset = prevOnsetTick(project.onsetTicks || [0], tick + 1);
+      if (onset !== lastSheetOnsetTick) {
+        lastSheetOnsetTick = onset;
+        syncSheetPlayhead(tick, { scroll: true });
+      }
+    }
     const playing = transport.playing;
     els.playBtn.disabled = playing;
     els.pauseBtn.disabled = !playing;
   },
 });
+
+/** Last sheet onset rendered while playing — avoid per-tick OSMD work. */
+let lastSheetOnsetTick = -1;
+
+function applyInstrumentSelection() {
+  const value = els.instrumentSelect?.value;
+  if (!value || value === "score") {
+    synth.setChannelPrograms(project?.channelPrograms || {}, project?.channelBanks || {});
+  } else {
+    synth.setUniformProgram(Number(value));
+  }
+}
+
+function syncTempoUi() {
+  if (!els.tempoBpm) return;
+  els.tempoBpm.value = String(transport.tempoBpm | 0);
+  if (els.tempoLabel) els.tempoLabel.textContent = "BPM";
+}
 
 function wrapProject(parsed) {
   return {
@@ -973,8 +999,8 @@ function beginVoiceNameEdit(voice, labelEl, nameRow) {
 }
 
 function setLoadedUi(enabled) {
-  for (const el of [els.playBtn, els.pauseBtn, els.stopBtn, els.tempoPercent, els.seek, els.muteAllBtn, els.unmuteAllBtn]) {
-    el.disabled = !enabled;
+  for (const el of [els.playBtn, els.pauseBtn, els.stopBtn, els.tempoBpm, els.seek, els.muteAllBtn, els.unmuteAllBtn]) {
+    if (el) el.disabled = !enabled;
   }
   els.pauseBtn.disabled = true;
   updateScoreViewUi();
@@ -989,6 +1015,14 @@ async function applyProject(parsed, fileName, opts = {}) {
   jiEnabled = false;
   transport.setProject(project);
   roll.setProject(project);
+  lastSheetOnsetTick = -1;
+  syncTempoUi();
+  // Default to score GM programs when the file provides them.
+  if (els.instrumentSelect) {
+    const hasScorePrograms = Object.keys(project.channelPrograms || {}).length > 0;
+    if (hasScorePrograms) els.instrumentSelect.value = "score";
+  }
+  applyInstrumentSelection();
   els.fileName.textContent = fileName;
   els.seek.max = String(project.durationTicks);
   els.seek.value = "0";
@@ -1298,7 +1332,7 @@ els.addNoteBtn?.addEventListener("click", () => {
 });
 
 els.instrumentSelect.addEventListener("change", () => {
-  synth.setProgram(Number(els.instrumentSelect.value));
+  applyInstrumentSelection();
 });
 
 els.tuningToggle.addEventListener("change", () => {
@@ -1312,10 +1346,11 @@ els.playBtn.addEventListener("click", async () => {
     setStatus("Loading soundfont (first time may take a few seconds)…");
     await synth.ensure();
     transport.setAudioContext(synth.ctx);
-    synth.setProgram(Number(els.instrumentSelect.value));
+    applyInstrumentSelection();
     synth.setPitchBendRange(project.pitchBendRange, project.bendRangeByChannel);
     transport.setApplyPitchBends(jiEnabled && project.hasPitchBends);
     sheet.enableFollowScroll?.();
+    lastSheetOnsetTick = -1;
     transport.play();
     setStatus("Playing — ←/→ previous/next onset");
   } catch (err) {
@@ -1342,10 +1377,15 @@ els.accompPercent?.addEventListener("input", () => {
   if (sheet.hasScore()) sheet.applyVoiceVisibility();
 });
 
-els.tempoPercent.addEventListener("input", () => {
-  const pct = Number(els.tempoPercent.value);
-  els.tempoLabel.textContent = `${pct}%`;
-  transport.setTempoPercent(pct);
+els.tempoBpm?.addEventListener("change", () => {
+  const bpm = Number(els.tempoBpm.value);
+  transport.setTempoBpm(bpm);
+  syncTempoUi();
+});
+els.tempoBpm?.addEventListener("input", () => {
+  const bpm = Number(els.tempoBpm.value);
+  if (!Number.isFinite(bpm) || bpm <= 0) return;
+  transport.setTempoBpm(bpm);
 });
 
 els.seek.addEventListener("input", () => {

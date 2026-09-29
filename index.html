@@ -41,13 +41,15 @@
       <label class="inline">
         <span data-i18n="sound">Sound</span>
         <select id="instrumentSelect">
-          <option value="52" selected data-i18n="choirAahs">Choir Aahs</option>
+          <option value="score" selected data-i18n="scoreInstruments">Score instruments</option>
+          <option value="52" data-i18n="choirAahs">Choir Aahs</option>
           <option value="53" data-i18n="voiceOohs">Voice Oohs</option>
           <option value="0" data-i18n="acousticPiano">Acoustic Piano</option>
           <option value="48" data-i18n="strings">Strings</option>
           <option value="40" data-i18n="violin">Violin</option>
           <option value="42" data-i18n="cello">Cello</option>
           <option value="73" data-i18n="flute">Flute</option>
+          <option value="65" data-i18n="altoSax">Alto Sax</option>
         </select>
       </label>
       <span id="status" class="status" aria-live="polite"></span>
@@ -61,8 +63,8 @@
       </div>
       <label class="inline">
         <span data-i18n="tempo">Tempo</span>
-        <input id="tempoPercent" type="range" min="50" max="150" value="100" disabled />
-        <span id="tempoLabel">100%</span>
+        <input id="tempoBpm" class="tempo-bpm" type="number" min="20" max="400" step="1" value="120" disabled />
+        <span id="tempoLabel">BPM</span>
       </label>
       <div class="time-row">
         <span id="timeLabel">0:00.0</span>

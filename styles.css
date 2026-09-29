@@ -396,6 +396,16 @@ button.secondary,
   font-size: 0.92rem;
 }
 
+.tempo-bpm {
+  width: 4.25rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.3rem 0.45rem;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
 select,
 input[type="range"] {
   accent-color: var(--accent);
