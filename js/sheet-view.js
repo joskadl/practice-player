@@ -140,6 +140,27 @@ export class SheetView {
     this.annotMode = null;
     /** Cached EngravingRules values to restore when staves layer is re-enabled. */
     this._engravingDefaults = null;
+    /** When false, user scrolled away — auto-follow resumes once the cursor re-enters view. */
+    this._followScroll = true;
+    /** Ignore scroll events until this time (ms) after a programmatic scroll. */
+    this._ignoreScrollUntil = 0;
+    this._lastScrollLeft = 0;
+    this._lastScrollTop = 0;
+    this._onUserScroll = () => {
+      if (performance.now() < this._ignoreScrollUntil) {
+        this._lastScrollLeft = this.container.scrollLeft;
+        this._lastScrollTop = this.container.scrollTop;
+        return;
+      }
+      const dx = Math.abs(this.container.scrollLeft - this._lastScrollLeft);
+      const dy = Math.abs(this.container.scrollTop - this._lastScrollTop);
+      this._lastScrollLeft = this.container.scrollLeft;
+      this._lastScrollTop = this.container.scrollTop;
+      // Ignore sub-pixel / layout jitter; only real user pans disable follow.
+      if (dx < 2 && dy < 2) return;
+      this._followScroll = false;
+    };
+    this.container.addEventListener("scroll", this._onUserScroll, { passive: true });
     this.container.addEventListener("click", (ev) => this._onContainerClick(ev));
   }
 
@@ -738,7 +759,7 @@ export class SheetView {
    */
   setPlayhead(tick, opts = {}) {
     if (!this._ready || !this.osmd?.cursor) return;
-    const scroll = opts.scroll !== false;
+    const wantScroll = opts.scroll !== false;
     this._lastPlayheadTick = tick | 0;
     const cursor = this.osmd.cursor;
 
@@ -778,7 +799,41 @@ export class SheetView {
     // Align the bar to the painted noteheads under the cursor (DOM), not OSMD units.
     this._nudgeCursorToNoteheads();
     this._ensureCursorVisible();
-    if (scroll) this._scrollCursorIntoView();
+    if (wantScroll) this._maybeAutoScroll();
+  }
+
+  /** Call when playback starts so the sheet follows the cursor again. */
+  enableFollowScroll() {
+    this._followScroll = true;
+  }
+
+  /**
+   * Vertical relationship of the playhead to the scrollport.
+   * @returns {"above"|"below"|"in"|null}
+   */
+  _cursorVerticalRelation() {
+    const el = this.osmd?.cursor?.cursorElement;
+    if (!el || this.container.hidden) return null;
+    const er = el.getBoundingClientRect();
+    const pr = this.container.getBoundingClientRect();
+    if (!er.width && !er.height && er.top === 0 && er.bottom === 0) return null;
+    const mid = (er.top + er.bottom) / 2;
+    if (mid < pr.top) return "above";
+    if (mid > pr.bottom) return "below";
+    return "in";
+  }
+
+  _maybeAutoScroll() {
+    if (this._followScroll) {
+      this._scrollCursorIntoView({ mode: "follow" });
+      return;
+    }
+    // User scrolled ahead (or away): resume only when the playhead's vertical
+    // mid-point lands inside the visible scrollport again.
+    if (this._cursorVerticalRelation() === "in") {
+      this._followScroll = true;
+      this._scrollCursorIntoView({ mode: "follow" });
+    }
   }
 
   /**
@@ -1661,24 +1716,44 @@ export class SheetView {
     return null;
   }
 
-  _scrollCursorIntoView() {
+  /**
+   * Keep the playhead readable without oscillating between two nearby scroll tops.
+   * Follow mode uses a wide comfort band + fixed target band so small cursor nudges
+   * (e.g. system changes) do not fight the previous scroll position.
+   * @param {{mode?: "follow"|"snap"}} [opts]
+   */
+  _scrollCursorIntoView(opts = {}) {
     const el = this.osmd?.cursor?.cursorElement;
     if (!el || this.container.hidden) return;
     const parent = this.container;
     const er = el.getBoundingClientRect();
     const pr = parent.getBoundingClientRect();
-    if (!er.width && !er.height && !er.left) return;
+    if (!er.width && !er.height && er.top === 0 && er.bottom === 0) return;
 
     const marginX = Math.max(40, pr.width * 0.22);
-    const marginY = Math.max(40, pr.height * 0.28);
     let dx = 0;
-    let dy = 0;
     if (er.left < pr.left + marginX) dx = er.left - pr.left - marginX;
     else if (er.right > pr.right - marginX) dx = er.right - pr.right + marginX;
-    if (er.top < pr.top + marginY) dy = er.top - pr.top - marginY;
-    else if (er.bottom > pr.bottom - marginY) dy = er.bottom - pr.bottom + marginY;
-    if (dx) parent.scrollLeft += dx;
-    if (dy) parent.scrollTop += dy;
+
+    // Comfort band: only pan vertically when the cursor leaves ~12%–78% of the port.
+    // Target band: place the cursor mid near ~32% from the top (stable, not edge-hugging).
+    const comfortTop = pr.top + pr.height * 0.12;
+    const comfortBottom = pr.bottom - pr.height * 0.22;
+    const targetY = pr.top + pr.height * 0.32;
+    const cursorMid = (er.top + er.bottom) / 2;
+    let dy = 0;
+    const mode = opts.mode || "follow";
+    if (mode === "snap" || cursorMid < comfortTop || cursorMid > comfortBottom) {
+      dy = cursorMid - targetY;
+    }
+
+    if (!dx && !dy) return;
+    // Ignore scroll events for long enough that layout + browser coalescing settle.
+    this._ignoreScrollUntil = performance.now() + 160;
+    parent.scrollLeft += dx;
+    parent.scrollTop += dy;
+    this._lastScrollLeft = parent.scrollLeft;
+    this._lastScrollTop = parent.scrollTop;
   }
 
   _mapInstruments(voices) {
