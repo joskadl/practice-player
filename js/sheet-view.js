@@ -142,8 +142,6 @@ export class SheetView {
     this._engravingDefaults = null;
     /** When false, user scrolled away — auto-follow resumes once the cursor re-enters view. */
     this._followScroll = true;
-    /** Tallest system height — playhead bar uses this length score-wide. */
-    this._maxCursorHeight = 0;
     /** Ignore scroll events until this time (ms) after a programmatic scroll. */
     this._ignoreScrollUntil = 0;
     this._lastScrollLeft = 0;
@@ -185,8 +183,6 @@ export class SheetView {
     this._pending = null;
     this._svgLayoutBackup = null;
     this.annotMode = null;
-    /** Tallest system height seen — playhead bar stays this long so follow Y is stable. */
-    this._maxCursorHeight = 0;
     this._setDirty(false);
     this.container.classList.remove(
       "pp-hide-staves",
@@ -448,7 +444,6 @@ export class SheetView {
     }
     this.osmd.render();
     this.applyVoiceVisibility();
-    this._refreshMaxCursorHeight();
     this._finishAnnotationPresentation();
     this._buildTimeline();
     this._bindInlineEditors();
@@ -517,7 +512,6 @@ export class SheetView {
       this.osmd.render();
       this._mapInstruments(opts.voices || []);
       this.applyVoiceVisibility();
-      this._refreshMaxCursorHeight();
       this._finishAnnotationPresentation();
       this._buildTimeline();
       this._bindInlineEditors();
@@ -843,9 +837,104 @@ export class SheetView {
   }
 
   /**
-   * Client-space bounds for alignment under the OSMD cursor.
-   * Uses notehead layout boxes for X (even when staves are CSS-hidden) and
-   * visible lyrics/chords/notes for the vertical span of the current system.
+   * Content-space Y extent of engraved staff lines inside a staffline group
+   * (top line → bottom line). Falls back to null when lines are not drawable.
+   * @param {Element} staffG
+   * @param {DOMRect} host
+   * @param {number} scrollT
+   * @returns {{top:number, bottom:number}|null}
+   */
+  _staffLineExtent(staffG, host, scrollT) {
+    let minTop = null;
+    let maxBottom = null;
+    const nodes = staffG.querySelectorAll("line, path, rect");
+    for (const el of nodes) {
+      // Skip notation that lives outside the five staff lines.
+      if (el.closest?.(".lyrics, .dash, .pp-chord, .pp-annot-note")) continue;
+      const r = el.getBoundingClientRect();
+      // Staff lines are long and hairline-thin in screen space.
+      if (!(r.width >= 36 && r.height <= 3.5 && r.height > 0)) continue;
+      const top = r.top - host.top + scrollT;
+      const bottom = r.bottom - host.top + scrollT;
+      minTop = minTop == null ? top : Math.min(minTop, top);
+      maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
+    }
+    if (minTop == null || maxBottom == null || !(maxBottom >= minTop)) return null;
+    return { top: minTop, bottom: maxBottom };
+  }
+
+  /**
+   * Staffline groups that form the active system (same vertical cluster as the
+   * notes under the OSMD cursor).
+   * @returns {Element[]}
+   */
+  _activeSystemStaffGroups() {
+    const cursor = this.osmd?.cursor;
+    if (!cursor) return [];
+    /** @type {Set<Element>} */
+    const seed = new Set();
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const src = gn?.sourceNote || gn?.getSourceNote?.();
+        const isRest =
+          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
+        if (isRest) continue;
+        const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
+        const staffG = svgEl?.closest?.("g.staffline");
+        if (staffG) seed.add(staffG);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const all = [...(this.container.querySelectorAll("g.staffline") || [])];
+    if (!all.length) return [...seed];
+
+    const host = this.container.getBoundingClientRect();
+    const scrollT = this.container.scrollTop;
+    const items = all.map((g) => {
+      const r = g.getBoundingClientRect();
+      return {
+        g,
+        top: r.top - host.top + scrollT,
+        bottom: r.bottom - host.top + scrollT,
+      };
+    });
+    items.sort((a, b) => a.top - b.top);
+
+    /** @type {Element[][]} */
+    const clusters = [];
+    let i = 0;
+    while (i < items.length) {
+      /** @type {Element[]} */
+      const cluster = [items[i].g];
+      let bottom = items[i].bottom;
+      let j = i + 1;
+      // Staves of one system sit within a modest vertical gap; next system is farther.
+      while (j < items.length && items[j].top <= bottom + 120) {
+        cluster.push(items[j].g);
+        bottom = Math.max(bottom, items[j].bottom);
+        j += 1;
+      }
+      clusters.push(cluster);
+      i = j;
+    }
+
+    if (seed.size) {
+      const hit = clusters.find((c) => c.some((g) => seed.has(g)));
+      if (hit) return hit;
+      return [...seed];
+    }
+    // No pitched notes under cursor — fall back to the first system.
+    return clusters[0] || [];
+  }
+
+  /**
+   * Bounds for the playhead: X at active noteheads; Y from the top staff line of
+   * the top staff to the bottom staff line of the bottom staff in the current
+   * system only (never across following systems / noteheads alone).
    * @returns {{left:number, top:number, bottom:number}|null} container-content coords
    */
   _cursorAlignBounds() {
@@ -854,12 +943,8 @@ export class SheetView {
     const host = this.container.getBoundingClientRect();
     const scrollL = this.container.scrollLeft;
     const scrollT = this.container.scrollTop;
-    const stavesOn = !!this.layers.staves;
 
     let minLeft = null;
-    /** @type {Set<Element>} */
-    const staffGroups = new Set();
-
     try {
       const gnotes =
         typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
@@ -876,156 +961,86 @@ export class SheetView {
         const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
         if (!svgEl || typeof svgEl.getBoundingClientRect !== "function") continue;
         const r = svgEl.getBoundingClientRect();
-        // Noteheads keep layout when CSS-hidden; still use them for X.
         if (!(r.width > 0 || r.height > 0)) continue;
         const left = r.left - host.left + scrollL;
         minLeft = minLeft == null ? left : Math.min(minLeft, left);
-        const staffG = svgEl.closest?.("g.staffline");
-        if (staffG) staffGroups.add(staffG);
       }
     } catch {
       return null;
     }
     if (minLeft == null) return null;
 
+    const systemStaffs = this._activeSystemStaffGroups();
     let minTop = null;
     let maxBottom = null;
-    const absorb = (el) => {
-      if (!el || typeof el.getBoundingClientRect !== "function") return;
-      const st = globalThis.getComputedStyle?.(el);
-      if (st && (st.visibility === "hidden" || st.display === "none" || st.opacity === "0")) {
-        return;
+
+    for (const g of systemStaffs) {
+      const extent = this._staffLineExtent(g, host, scrollT);
+      if (extent) {
+        minTop = minTop == null ? extent.top : Math.min(minTop, extent.top);
+        maxBottom = maxBottom == null ? extent.bottom : Math.max(maxBottom, extent.bottom);
+        continue;
       }
-      const r = el.getBoundingClientRect();
-      if (!(r.width > 0.5 || r.height > 0.5)) return;
+      // Fallback when staff lines are hidden/undrawn: use the staffline group box,
+      // but prefer a tight band around visible notation if present.
+      const r = g.getBoundingClientRect();
+      if (!(r.height > 1)) continue;
       const top = r.top - host.top + scrollT;
       const bottom = r.bottom - host.top + scrollT;
       minTop = minTop == null ? top : Math.min(minTop, top);
       maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
-    };
-
-    const groups = staffGroups.size
-      ? [...staffGroups]
-      : [...(this.container.querySelectorAll("g.staffline") || [])];
-
-    for (const g of groups) {
-      if (stavesOn) {
-        // Visible notation in this staffline (skip CSS-hidden stave chrome).
-        for (const el of g.querySelectorAll("path, rect, use, text")) {
-          // Only count notehead-ish marks: skip empty staff lines (long thin rects/lines).
-          const r = el.getBoundingClientRect();
-          if (r.height < 2 || r.width < 2) continue;
-          absorb(el);
-        }
-      }
-      if (this.layers.lyrics) {
-        for (const el of g.querySelectorAll(".lyrics, .dash")) absorb(el);
-      }
-      if (this.layers.chords) {
-        for (const el of g.querySelectorAll(".pp-chord")) absorb(el);
-      }
-      if (this.layers.notes) {
-        for (const el of g.querySelectorAll(".pp-annot-note")) absorb(el);
-      }
     }
 
-    // Always include the active noteheads for X/Y (layout exists even if stave-off).
-    try {
-      const gnotes =
-        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
-      for (const gn of gnotes) {
-        const src = gn?.sourceNote || gn?.getSourceNote?.();
-        const isRest =
-          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
-        if (isRest) continue;
-        const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
-        if (!svgEl) continue;
-        if (stavesOn) absorb(svgEl);
-        else {
-          // Stave-off: noteheads are hidden — still use their y as a fallback mid-line.
+    // Stave-off / empty: last resort — noteheads under cursor only (same onset).
+    if (minTop == null || maxBottom == null || !(maxBottom > minTop)) {
+      try {
+        const gnotes =
+          typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+        for (const gn of gnotes) {
+          const src = gn?.sourceNote || gn?.getSourceNote?.();
+          const isRest =
+            src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
+          if (isRest) continue;
+          const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
+          if (!svgEl) continue;
           const r = svgEl.getBoundingClientRect();
           if (!(r.width > 0 || r.height > 0)) continue;
-          if (minTop != null && maxBottom != null) continue;
           const top = r.top - host.top + scrollT;
           const bottom = r.bottom - host.top + scrollT;
           minTop = minTop == null ? top : Math.min(minTop, top);
           maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
         }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
 
     if (minTop == null || maxBottom == null || !(maxBottom > minTop)) {
       return { left: minLeft, top: 0, bottom: 40 };
     }
-    // Small pad so the bar clearly brackets the active row(s).
-    const pad = 4;
     return {
       left: minLeft,
-      top: Math.max(0, minTop - pad),
-      bottom: maxBottom + pad,
+      top: Math.max(0, minTop),
+      bottom: maxBottom,
     };
   }
 
   /**
-   * Place/size the cursor bar to the current onset: X at noteheads, top at the
-   * active system. Height is the score-wide max so the bar (and follow target)
-   * does not jump between short and tall systems.
+   * Place/size the cursor bar: X at noteheads; Y spans only the active system’s
+   * top→bottom staff lines so the bar does not cross later systems.
    */
   _nudgeCursorToNoteheads() {
     const el = this.osmd?.cursor?.cursorElement;
     if (!el) return;
     const bounds = this._cursorAlignBounds();
     if (!bounds) return;
-    const natural = Math.max(16, bounds.bottom - bounds.top);
-    if (natural > (this._maxCursorHeight || 0)) this._maxCursorHeight = natural;
-    const height = Math.max(natural, this._maxCursorHeight || natural);
+    const height = Math.max(16, bounds.bottom - bounds.top);
     el.style.left = `${Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX)}px`;
     el.style.top = `${bounds.top}px`;
     el.style.height = `${height}px`;
     el.style.width = el.style.width || "2px";
     el.style.maxHeight = "none";
     el.style.objectFit = "fill";
-  }
-
-  /**
-   * Measure the tallest vertical system cluster so the playhead can use a
-   * constant length for the whole score (avoids follow-scroll Y jumps).
-   */
-  _refreshMaxCursorHeight() {
-    const groups = [...(this.container.querySelectorAll("g.staffline") || [])];
-    if (!groups.length) {
-      this._maxCursorHeight = 0;
-      return;
-    }
-    const host = this.container.getBoundingClientRect();
-    const scrollT = this.container.scrollTop;
-    const items = [];
-    for (const g of groups) {
-      const r = g.getBoundingClientRect();
-      if (!(r.height > 1)) continue;
-      items.push({
-        top: r.top - host.top + scrollT,
-        bottom: r.bottom - host.top + scrollT,
-      });
-    }
-    items.sort((a, b) => a.top - b.top);
-    let maxH = 0;
-    let i = 0;
-    while (i < items.length) {
-      let top = items[i].top;
-      let bottom = items[i].bottom;
-      let j = i + 1;
-      // Stafflines in one system sit within a modest vertical gap.
-      while (j < items.length && items[j].top <= bottom + 120) {
-        bottom = Math.max(bottom, items[j].bottom);
-        j += 1;
-      }
-      maxH = Math.max(maxH, bottom - top);
-      i = j;
-    }
-    this._maxCursorHeight = Math.max(40, Math.ceil(maxH + 8));
   }
 
   /**
@@ -1765,8 +1780,9 @@ export class SheetView {
   }
 
   /**
-   * Keep the active system’s top on a fixed horizontal “rail” in the viewport
-   * while following, so changing systems / cursor lengths does not jump the view.
+   * Keep the active system’s top staff line on a fixed horizontal “rail” in the
+   * viewport while following. Cursor height follows only that system, so Y does
+   * not jump when notes move or systems change length.
    * @param {{mode?: "follow"|"snap"}} [opts]
    */
   _scrollCursorIntoView(opts = {}) {
@@ -1848,7 +1864,6 @@ export class SheetView {
       } catch {
         /* ignore */
       }
-      this._refreshMaxCursorHeight();
       this._finishAnnotationPresentation();
       this._buildTimeline();
       this._bindInlineEditors();
