@@ -2,7 +2,7 @@
 
 Standalone web app for choir / ensemble rehearsal of **MIDI** and **MusicXML** scores: mute/solo voices, sheet + piano roll, optional Just Intonation, offline install, and **shared practice packs** with sync.
 
-Version: see `js/version.js` / `version.json` / footer.
+Version: see `js/version.js` / `version.json` / footer (`v0.2.3` — auto-update smoke test).
 
 ---
 
