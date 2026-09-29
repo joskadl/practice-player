@@ -97,9 +97,16 @@ export function parseMusicXml(xmlText) {
   const scoreParts = root.getElementsByTagName("score-part");
   for (let i = 0; i < scoreParts.length; i++) {
     const sp = scoreParts[i];
+    // MusicXML midi-program is 1–128; GM / Web MIDI use 0–127.
+    const progRaw = num(sp, "midi-program", 0);
+    const program =
+      progRaw >= 1 && progRaw <= 128 ? progRaw - 1 : progRaw >= 0 && progRaw <= 127 ? progRaw : 52;
+    const bank = Math.max(0, Math.min(127, num(sp, "midi-bank", 0)));
     partMeta.push({
       id: sp.getAttribute("id") || `P${i + 1}`,
       name: text(sp, "part-name") || text(sp, "part-abbreviation") || `Part ${i + 1}`,
+      program,
+      bank,
     });
   }
 
@@ -306,11 +313,19 @@ export function parseMusicXml(xmlText) {
   }
 
   const voices = [];
+  /** @type {Record<number, number>} */
+  const channelPrograms = {};
+  /** @type {Record<number, number>} */
+  const channelBanks = {};
   for (let i = 0; i < Math.max(partMeta.length, partEls.length); i++) {
     const channel = channelForPartIndex(i);
-    const meta = partMeta[i] || { id: `P${i + 1}`, name: `Part ${i + 1}` };
+    const meta = partMeta[i] || { id: `P${i + 1}`, name: `Part ${i + 1}`, program: 52, bank: 0 };
     const count = partCounts.get(channel) || 0;
     if (count === 0 && i >= partMeta.length) continue;
+    const program = meta.program ?? 52;
+    const bank = meta.bank ?? 0;
+    channelPrograms[channel] = program;
+    channelBanks[channel] = bank;
     voices.push({
       id: `ch:${channel}`,
       kind: "channel",
@@ -319,6 +334,8 @@ export function parseMusicXml(xmlText) {
       partId: meta.id,
       name: meta.name,
       noteCount: count,
+      program,
+      bank,
     });
   }
 
@@ -362,6 +379,8 @@ export function parseMusicXml(xmlText) {
       noteCount: v.noteCount,
     })),
     voices: voicesOut,
+    channelPrograms,
+    channelBanks,
     notes,
     markers,
     pitchBends,

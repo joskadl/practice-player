@@ -464,6 +464,8 @@ export function parseMidi(buffer) {
     tempoMap: compactTempo,
     tracks: noteTracks,
     voices,
+    channelPrograms: {},
+    channelBanks: {},
     notes,
     markers,
     pitchBends: activePitchBends,
@@ -498,6 +500,13 @@ export function tickToSeconds(tick, tempoMap, ticksPerBeat) {
     seconds += ((tick - cursor) * usPerBeat) / (ticksPerBeat * 1_000_000);
   }
   return seconds;
+}
+
+/** Initial score BPM from the first tempo-map entry (quarter-note BPM). */
+export function bpmFromTempoMap(tempoMap) {
+  const us = tempoMap?.[0]?.usPerBeat ?? 500_000;
+  if (!(us > 0)) return 120;
+  return Math.max(1, Math.round(60_000_000 / us));
 }
 
 export function formatTime(seconds) {

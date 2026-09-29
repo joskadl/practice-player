@@ -1,5 +1,5 @@
 /**
- * Thin FluidSynth (js-synthesizer) wrapper — choir/GM playback, no JI retune.
+ * Thin FluidSynth (js-synthesizer) wrapper — GM playback with per-channel programs.
  */
 
 function loadScriptOnce(src) {
@@ -25,13 +25,20 @@ function loadScriptOnce(src) {
   });
 }
 
+const DEFAULT_PROGRAM = 52; // Choir Aahs
+
 export class ChoirSynth {
   constructor() {
     this.ctx = null;
     this.synth = null;
     this.node = null;
     this.sfontId = null;
-    this.program = 52;
+    /** @type {number|null} null = use per-channel score programs */
+    this.overrideProgram = null;
+    /** @type {Record<number, number>} */
+    this.channelPrograms = {};
+    /** @type {Record<number, number>} */
+    this.channelBanks = {};
     this._initPromise = null;
     this._holds = new Map();
   }
@@ -63,22 +70,55 @@ export class ChoirSynth {
     const res = await fetch("./soundfonts/TimGM6mb.sf2");
     if (!res.ok) throw new Error(`Soundfont load failed (${res.status})`);
     this.sfontId = await this.synth.loadSFont(await res.arrayBuffer());
-    this._applyProgram();
+    this._applyPrograms();
     if (this.ctx.state === "suspended") await this.ctx.resume();
   }
 
-  setProgram(program) {
-    this.program = Math.max(0, Math.min(127, program | 0));
-    if (this.synth && this.sfontId != null) this._applyProgram();
+  /**
+   * Per-channel GM programs from the score (0–127).
+   * @param {Record<number, number>|null|undefined} programs
+   * @param {Record<number, number>|null|undefined} [banks]
+   */
+  setChannelPrograms(programs, banks = null) {
+    this.channelPrograms = { ...(programs || {}) };
+    this.channelBanks = { ...(banks || {}) };
+    this.overrideProgram = null;
+    if (this.synth && this.sfontId != null) this._applyPrograms();
   }
 
-  _applyProgram() {
+  /** Force every melodic channel to one GM program (GUI override). */
+  setUniformProgram(program) {
+    this.overrideProgram = Math.max(0, Math.min(127, program | 0));
+    if (this.synth && this.sfontId != null) this._applyPrograms();
+  }
+
+  /** @deprecated Prefer setUniformProgram / setChannelPrograms */
+  setProgram(program) {
+    this.setUniformProgram(program);
+  }
+
+  _programForChannel(ch) {
+    if (this.overrideProgram != null) return this.overrideProgram;
+    const p = this.channelPrograms[ch];
+    return p != null ? p : DEFAULT_PROGRAM;
+  }
+
+  _bankForChannel(ch) {
+    if (this.overrideProgram != null) return 0;
+    const b = this.channelBanks[ch];
+    return b != null ? b : 0;
+  }
+
+  _applyPrograms() {
+    if (!this.synth || this.sfontId == null) return;
     for (let ch = 0; ch < 16; ch++) {
       if (ch === 9) {
         this.synth.setChannelType(ch, true);
         continue;
       }
-      this.synth.midiProgramSelect(ch, this.sfontId, 0, this.program);
+      const bank = this._bankForChannel(ch);
+      const program = this._programForChannel(ch);
+      this.synth.midiProgramSelect(ch, this.sfontId, bank, program);
     }
   }
 
@@ -137,7 +177,6 @@ export class ChoirSynth {
 
   allNotesOff() {
     if (!this.synth) return;
-    // Prefer whole-synth cut (−1) when the build supports omitting the channel.
     try {
       this.synth.midiAllNotesOff();
       this.synth.midiAllSoundsOff();
@@ -154,10 +193,6 @@ export class ChoirSynth {
     this._holds.clear();
   }
 
-  /**
-   * Hard stop for stuck notes: force every tracked key off, then CC / All Sound Off.
-   * Safe to call when nothing is playing.
-   */
   panic() {
     if (!this.synth) {
       this._holds.clear();
@@ -170,7 +205,6 @@ export class ChoirSynth {
     this._holds.clear();
     for (let ch = 0; ch < 16; ch++) {
       try {
-        // CC 120 All Sound Off, CC 123 All Notes Off (GM)
         this.synth.midiControl(ch, 120, 0);
         this.synth.midiControl(ch, 123, 0);
       } catch {
