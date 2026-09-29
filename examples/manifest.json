@@ -29,11 +29,11 @@
       "description": "Oggi è nato il Salvatore"
     },
     {
-      "id": "demo",
-      "title": "Demo (MIDI)",
-      "file": "demo.mid",
-      "format": "midi",
-      "description": "Short MIDI demo for playback tests"
+      "id": "please-come-home-for-christmas",
+      "title": "Please Come Home for Christmas",
+      "file": "please-come-home-for-christmas.musicxml",
+      "format": "musicxml",
+      "description": "Voice with alto sax, piano, and bass"
     }
   ]
 }

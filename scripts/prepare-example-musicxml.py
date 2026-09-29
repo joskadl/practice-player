@@ -27,6 +27,7 @@ TITLES = {
     "blue-christmas-for-barbershopers.musicxml": "Blue Christmas",
     "gaudete-christus-est-natus.musicxml": "Gaudete, Christus est natus",
     "gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.musicxml": "Gloria in excelsis Deo",
+    "please-come-home-for-christmas.musicxml": "Please Come Home for Christmas",
 }
 
 
@@ -102,7 +103,9 @@ def prepare(path: Path, title: str) -> None:
         for i, sp in enumerate(parts):
             pn = first(sp, "part-name")
             name = (pn.text or "").strip() if pn is not None else ""
-            name = re.sub(r"\s+", " / ", name) if name else ""
+            # MuseScore sometimes puts two voice names on one staff with a newline.
+            name = re.sub(r"[\r\n]+", " / ", name)
+            name = re.sub(r"[ \t]+", " ", name).strip()
             if not name:
                 name = SATB[i] if i < len(SATB) else f"Voice {i + 1}"
             if pn is None:

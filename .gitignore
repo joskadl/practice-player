@@ -9,4 +9,5 @@ node_modules/
 examples/*.mscz
 examples/_pdf_pages/
 examples/_convert-job.json
+examples/*.pdf
 

@@ -198,7 +198,7 @@ js/
   version.js            APP_VERSION / label (keep in sync with tags)
 vendor/                 FluidSynth, js-synthesizer, OpenSheetMusicDisplay
 soundfonts/TimGM6mb.sf2 GM bank (~6 MB)
-examples/               demo.mid, stille-nacht.musicxml
+examples/               Published MusicXML catalog (`manifest.json`)
 icons/                  PWA icons
 docs/                   Extra maintainer docs
 ```
@@ -266,10 +266,7 @@ Prefer **marker-only Standard export** from JustPlay for practice; this app synt
 
 ## Demo files
 
-| File | Contents |
-|------|----------|
-| `examples/demo.mid` | Short two-voice MIDI |
-| `examples/stille-nacht.musicxml` | Four-voice score (sheet + voices) |
+Open → **Examples** loads from `examples/manifest.json`. Current scores include Stille Nacht, Blue Christmas, Gaudete, Gloria in excelsis Deo, and Please Come Home for Christmas (scrubbed MusicXML).
 
 ---
 
