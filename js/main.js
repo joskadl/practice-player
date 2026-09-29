@@ -1311,9 +1311,11 @@ els.playBtn.addEventListener("click", async () => {
   try {
     setStatus("Loading soundfont (first time may take a few seconds)…");
     await synth.ensure();
+    transport.setAudioContext(synth.ctx);
     synth.setProgram(Number(els.instrumentSelect.value));
     synth.setPitchBendRange(project.pitchBendRange, project.bendRangeByChannel);
     transport.setApplyPitchBends(jiEnabled && project.hasPitchBends);
+    sheet.enableFollowScroll?.();
     transport.play();
     setStatus("Playing — ←/→ previous/next onset");
   } catch (err) {
