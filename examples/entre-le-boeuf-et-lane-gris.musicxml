@@ -206,7 +206,7 @@ De ce grand Dieu d'amour.
           <words default-y="17.86" relative-y="10">Le sommeil de l'enfant Jésus</words>
           </direction-type>
         </direction>
-      <sound tempo="72"/>
+      <sound tempo="70"/>
       <note default-x="100.25" default-y="-40">
         <pitch>
           <step>E</step>
