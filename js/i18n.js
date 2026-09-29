@@ -109,6 +109,11 @@ const STRINGS = {
     editHistory: "Edit history",
     noRehearsalNotes: "No rehearsal notes yet.",
     langToggleTip: "Switch language / Wissel taal",
+    updateChecking: "Checking for app updates…",
+    updateUpdating: "Updating to the latest version…",
+    updateCurrent: "App is up to date",
+    updateApplied: "Updated to {version}",
+    updateFailed: "Could not check for updates (offline?)",
   },
   nl: {
     title: "MIDI Oefenspeler",
@@ -215,6 +220,11 @@ const STRINGS = {
     editHistory: "Bewerkingsgeschiedenis",
     noRehearsalNotes: "Nog geen repetitienotities.",
     langToggleTip: "Switch language / Wissel taal",
+    updateChecking: "Controleren op app-updates…",
+    updateUpdating: "Bezig met updaten naar de nieuwste versie…",
+    updateCurrent: "App is up-to-date",
+    updateApplied: "Bijgewerkt naar {version}",
+    updateFailed: "Kon niet controleren op updates (offline?)",
   },
 };
 

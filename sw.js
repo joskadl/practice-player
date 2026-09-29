@@ -1,17 +1,19 @@
 /**
  * Offline shell for MIDI Practice Player (GitHub Pages / PWA).
  *
- * App shell (HTML/JS/CSS) is network-first so a normal reload picks up
- * deploys without a hard refresh. Heavy/static assets stay cache-first.
+ * App shell (HTML/JS/CSS) and examples are network-first so a normal
+ * reload / startup update picks up deploys. Heavy vendor/soundfont
+ * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v28";
+const CACHE = "midi-practice-player-v29";
 
 const PRECACHE = [
   "./",
   "./index.html",
   "./styles.css",
   "./manifest.webmanifest",
+  "./version.json",
   "./js/main.js",
   "./js/i18n.js",
   "./js/midi-parse.js",
@@ -25,6 +27,7 @@ const PRECACHE = [
   "./js/piano-roll.js",
   "./js/sheet-view.js",
   "./js/version.js",
+  "./js/app-update.js",
   "./js/practice-pack.js",
   "./js/local-store.js",
   "./js/sync-remote.js",
@@ -45,12 +48,14 @@ const PRECACHE = [
   "./examples/entre-le-boeuf-et-lane-gris.musicxml",
 ];
 
-/** True for files that must prefer the network (app code / markup). */
-function isShellRequest(url) {
+/** True for files that must prefer the network (app code / examples / version). */
+function isNetworkFirst(url) {
   const path = url.pathname;
   if (path.endsWith("/") || path.endsWith("/index.html")) return true;
   if (path.endsWith(".html") || path.endsWith(".css") || path.endsWith(".js")) return true;
   if (path.endsWith(".webmanifest") || path.endsWith("manifest.webmanifest")) return true;
+  if (path.endsWith("/version.json") || path.endsWith("version.json")) return true;
+  if (path.includes("/examples/")) return true;
   // Never cache the service worker script itself via this handler.
   if (path.endsWith("/sw.js")) return true;
   return false;
@@ -76,6 +81,12 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -88,7 +99,7 @@ self.addEventListener("fetch", (event) => {
   }
   if (url.origin !== self.location.origin) return;
 
-  if (isShellRequest(url)) {
+  if (isNetworkFirst(url)) {
     event.respondWith(networkFirst(request));
     return;
   }

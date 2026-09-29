@@ -23,6 +23,11 @@ import { PianoRoll, channelColor } from "./piano-roll.js";
 import { SheetView } from "./sheet-view.js";
 import { APP_VERSION_LABEL } from "./version.js";
 import {
+  checkForAppUpdate,
+  consumeJustUpdatedLabel,
+  watchServiceWorkerLifecycle,
+} from "./app-update.js";
+import {
   downloadPack,
   parsePracticePack,
   comparePacks,
@@ -1151,9 +1156,9 @@ function setOpenMenuOpen(open) {
   els.openMenuBtn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
-async function fetchExamplesCatalog() {
-  if (examplesCatalog) return examplesCatalog;
-  const res = await fetch("./examples/manifest.json", { cache: "no-cache" });
+async function fetchExamplesCatalog({ force = false } = {}) {
+  if (examplesCatalog && !force) return examplesCatalog;
+  const res = await fetch("./examples/manifest.json", { cache: "no-store" });
   if (!res.ok) throw new Error(t("examplesLoadError"));
   const data = await res.json();
   examplesCatalog = Array.isArray(data?.examples) ? data.examples : [];
@@ -1164,7 +1169,9 @@ async function populateExamplesMenu() {
   if (!els.examplesList) return;
   els.examplesList.innerHTML = "";
   try {
-    const examples = await fetchExamplesCatalog();
+    // Always revalidate when online so newly published scores appear without
+    // waiting for a full app restart (SW serves examples network-first).
+    const examples = await fetchExamplesCatalog({ force: navigator.onLine !== false });
     if (!examples.length) {
       const empty = document.createElement("div");
       empty.className = "open-menu-empty";
@@ -1203,7 +1210,7 @@ async function loadExample(ex) {
   solo.clear();
   hiddenVoices.clear();
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`Could not load ${file}`);
     let parsed;
     const displayName = ex.title || file;
@@ -1635,30 +1642,27 @@ els.installBtn?.addEventListener("click", async () => {
 });
 
 if ("serviceWorker" in navigator) {
-  // New SW takes control → reload once so the page uses fresh shell assets
-  // without requiring a hard refresh.
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
+  watchServiceWorkerLifecycle(() => {
+    setStatus(t("updateChecking"));
   });
 
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("./sw.js", { updateViaCache: "none" })
-      .then((reg) => {
-        // Pick up a newly deployed SW promptly.
-        reg.update().catch(() => {});
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible") {
-            reg.update().catch(() => {});
-          }
-        });
-      })
-      .catch(() => {
-        /* offline install is best-effort */
-      });
+  void checkForAppUpdate({
+    onStatus: (phase) => {
+      if (phase === "checking") setStatus(t("updateChecking"));
+      else if (phase === "updating") setStatus(t("updateUpdating"));
+    },
+    onError: () => setStatus(t("updateFailed"), true),
+  }).then(({ updated }) => {
+    if (updated) return;
+    const just = consumeJustUpdatedLabel();
+    if (just) {
+      setStatus(t("updateApplied").replace("{version}", just));
+      return;
+    }
+    const cur = els.status?.textContent || "";
+    if (cur === t("updateChecking") || cur === t("updateUpdating")) {
+      setStatus("Ready — open a MIDI or MusicXML file to begin.");
+    }
   });
 }
 

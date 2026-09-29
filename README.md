@@ -2,7 +2,7 @@
 
 Standalone web app for choir / ensemble rehearsal of **MIDI** and **MusicXML** scores: mute/solo voices, sheet + piano roll, optional Just Intonation, offline install, and **shared practice packs** with sync.
 
-Version: see `js/version.js` / footer (`v0.1.0`).
+Version: see `js/version.js` / `version.json` / footer.
 
 ---
 
@@ -237,10 +237,9 @@ See `js/practice-pack.js` for create/parse/compare helpers.
 
 ### Versioning
 
-1. Update `package.json` `"version"` and `js/version.js` (`APP_VERSION`).
-2. Optionally `git tag vX.Y.Z`.
-3. Bump service worker `CACHE` string.
-4. Deploy Pages / push `main`.
+1. Update `package.json` `"version"`, `js/version.js` (`APP_VERSION`), and `version.json`.
+2. Tag `vX.Y.Z` and bump service worker `CACHE` (and `PRECACHE` for new files).
+3. Push `main` — Pages deploys; installed clients check `version.json` on startup and refresh.
 
 ### Vendored dependencies
 
