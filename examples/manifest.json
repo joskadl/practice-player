@@ -8,6 +8,27 @@
       "description": "SATB choir arrangement (Dutch lyrics)"
     },
     {
+      "id": "blue-christmas",
+      "title": "Blue Christmas",
+      "file": "blue-christmas-for-barbershopers.musicxml",
+      "format": "musicxml",
+      "description": "Barbershop arrangement (Tenor/Lead, Bari/Bass)"
+    },
+    {
+      "id": "gaudete",
+      "title": "Gaudete, Christus est natus",
+      "file": "gaudete-christus-est-natus.musicxml",
+      "format": "musicxml",
+      "description": "SATB choir"
+    },
+    {
+      "id": "gloria-in-excelsis-deo",
+      "title": "Gloria in excelsis Deo",
+      "file": "gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.musicxml",
+      "format": "musicxml",
+      "description": "Oggi è nato il Salvatore"
+    },
+    {
       "id": "demo",
       "title": "Demo (MIDI)",
       "file": "demo.mid",
