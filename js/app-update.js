@@ -1,9 +1,10 @@
 /**
  * Startup / foreground update check for the installed PWA.
  *
- * Detects a newer published version (version.json) or a waiting service
- * worker, then surfaces a prompt. Applying the update is user-driven
- * (Update now) so installs are never silently half-refreshed.
+ * Shows an Update banner when published version.json is newer than the
+ * running build. "Update now" unregisters the service worker, clears
+ * caches, and does a cache-busted navigation so the next load cannot
+ * keep serving a stale shell (which caused an update-prompt loop).
  */
 
 import { APP_VERSION } from "./version.js";
@@ -12,6 +13,7 @@ const VERSION_URL = "./version.json";
 const RELOAD_FLAG = "mpp-sw-reloading";
 const UPDATED_FLAG = "mpp-just-updated";
 const DISMISS_FLAG = "mpp-update-dismissed";
+const APPLIED_FLAG = "mpp-applied-version";
 
 /**
  * @param {string} a
@@ -42,6 +44,21 @@ export function isNewerVersion(remote, local) {
 export function formatVersionLabel(v) {
   if (!v) return "";
   return v.startsWith("v") ? v : `v${v}`;
+}
+
+/**
+ * Drop the one-shot cache-buster query param from the address bar.
+ */
+export function scrubUpdateQueryParam() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("mpp_v")) return;
+    url.searchParams.delete("mpp_v");
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState(null, "", next || url.pathname);
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -88,6 +105,7 @@ export async function fetchPublishedVersion() {
 
 /**
  * @param {ServiceWorkerRegistration} reg
+ * @param {number} [timeoutMs]
  * @returns {Promise<ServiceWorker|null>}
  */
 function waitForInstalledWorker(reg, timeoutMs = 20000) {
@@ -111,43 +129,31 @@ function waitForInstalledWorker(reg, timeoutMs = 20000) {
 }
 
 /**
- * Activate waiting SW (if any), wipe old caches, reload.
- * @param {{ registration?: ServiceWorkerRegistration|null, remoteVersion?: string|null }} [opts]
+ * Hard reset: unregister SW, wipe caches, cache-bust navigate.
+ * Avoids the loop where reload kept serving a stale shell while
+ * version.json already advertised a newer release.
+ *
+ * @param {{ remoteVersion?: string|null }} [opts]
  */
 export async function applyAppUpdate(opts = {}) {
   const remoteVersion = opts.remoteVersion || null;
-  let reg = opts.registration || null;
 
   try {
     sessionStorage.setItem(RELOAD_FLAG, "1");
     sessionStorage.setItem(UPDATED_FLAG, remoteVersion || APP_VERSION);
+    if (remoteVersion) sessionStorage.setItem(APPLIED_FLAG, remoteVersion);
     sessionStorage.removeItem(DISMISS_FLAG);
   } catch {
     /* ignore */
   }
 
   try {
-    if (!reg && "serviceWorker" in navigator) {
-      reg = await navigator.serviceWorker.getRegistration();
-    }
-    if (reg) {
-      try {
-        await reg.update();
-      } catch {
-        /* ignore */
-      }
-      let worker = reg.waiting;
-      if (!worker && reg.installing) {
-        worker = await waitForInstalledWorker(reg);
-      }
-      if (worker) {
-        worker.postMessage({ type: "SKIP_WAITING" });
-        // controllerchange handler reloads; fallback below if it does not.
-        await new Promise((r) => setTimeout(r, 400));
-      }
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
     }
   } catch {
-    /* fall through to cache wipe + reload */
+    /* ignore */
   }
 
   try {
@@ -157,7 +163,9 @@ export async function applyAppUpdate(opts = {}) {
     /* ignore */
   }
 
-  window.location.reload();
+  const url = new URL(window.location.href);
+  url.searchParams.set("mpp_v", String(Date.now()));
+  window.location.replace(`${url.pathname}${url.search}${url.hash}`);
 }
 
 /**
@@ -200,6 +208,42 @@ export async function checkForAppUpdate(opts = {}) {
     return { available: false, remoteVersion, registration: null };
   }
 
+  // Already running the published (or newer) build — never prompt.
+  if (remoteVersion != null && compareSemver(remoteVersion, APP_VERSION) <= 0) {
+    try {
+      sessionStorage.removeItem(APPLIED_FLAG);
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+      else if (!navigator.serviceWorker.controller) {
+        const worker = reg.installing ? await waitForInstalledWorker(reg) : null;
+        if (worker) worker.postMessage({ type: "SKIP_WAITING" });
+      }
+    } catch {
+      /* ignore */
+    }
+    onStatus?.("current");
+    return { available: false, remoteVersion, registration: reg };
+  }
+
+  // Just applied this remote version but shell still looks old — avoid re-prompt spam this session.
+  try {
+    const applied = sessionStorage.getItem(APPLIED_FLAG);
+    if (
+      applied &&
+      remoteVersion &&
+      applied === remoteVersion &&
+      compareSemver(remoteVersion, APP_VERSION) > 0
+    ) {
+      onStatus?.("current");
+      return { available: false, remoteVersion, registration: reg };
+    }
+  } catch {
+    /* ignore */
+  }
+
   // First install: take control without prompting.
   if (!navigator.serviceWorker.controller) {
     try {
@@ -223,12 +267,11 @@ export async function checkForAppUpdate(opts = {}) {
     await waitForInstalledWorker(reg);
   }
 
-  const waiting = !!(reg.waiting || reg.installing);
-  const newer =
+  // Prompt only when the published version is actually newer.
+  const available =
     remoteVersion != null && isNewerVersion(remoteVersion, APP_VERSION);
-  const available = waiting || newer;
 
-  if (available && !wasDismissedFor(remoteVersion || "waiting")) {
+  if (available && !wasDismissedFor(remoteVersion)) {
     onAvailable?.({ remoteVersion, registration: reg });
   } else {
     onStatus?.("current");
@@ -238,39 +281,14 @@ export async function checkForAppUpdate(opts = {}) {
 }
 
 /**
- * Reload only after the user chose Update now (SKIP_WAITING).
- * Still refresh the SW in the background when the app becomes visible.
+ * Background SW refresh when the app becomes visible again.
+ * No automatic reload — updates go through the banner + Update now.
  *
- * @param {{
- *   userInitiatedRef: { current: boolean },
- *   onVisibleCheck?: () => void,
- *   onUpdateFound?: (reg: ServiceWorkerRegistration) => void,
- * }} opts
+ * @param {{ onVisibleCheck?: () => void }} opts
  */
 export function watchServiceWorkerLifecycle(opts) {
   if (!("serviceWorker" in navigator)) return;
-  const { userInitiatedRef, onVisibleCheck, onUpdateFound } = opts;
-
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!userInitiatedRef?.current) return;
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
-
-  navigator.serviceWorker.getRegistration().then((reg) => {
-    if (!reg) return;
-    reg.addEventListener("updatefound", () => {
-      const worker = reg.installing;
-      if (!worker) return;
-      worker.addEventListener("statechange", () => {
-        if (worker.state === "installed" && navigator.serviceWorker.controller) {
-          onUpdateFound?.(reg);
-        }
-      });
-    });
-  });
+  const { onVisibleCheck } = opts;
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;

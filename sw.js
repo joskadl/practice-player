@@ -6,7 +6,7 @@
  * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v32";
+const CACHE = "midi-practice-player-v33";
 
 const PRECACHE = [
   "./",
@@ -106,7 +106,8 @@ self.addEventListener("fetch", (event) => {
 
 async function networkFirst(request) {
   try {
-    const response = await fetch(request);
+    // Bypass HTTP cache so Update now / startup checks cannot keep a stale shell.
+    const response = await fetch(request, { cache: "no-store" });
     if (response && response.ok) {
       const cache = await caches.open(CACHE);
       cache.put(request, response.clone());
@@ -126,7 +127,7 @@ async function cacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: "no-store" });
     if (response && response.status === 200 && response.type !== "opaque") {
       const cache = await caches.open(CACHE);
       cache.put(request, response.clone());

@@ -29,6 +29,7 @@ import {
   applyAppUpdate,
   dismissUpdatePrompt,
   formatVersionLabel,
+  scrubUpdateQueryParam,
 } from "./app-update.js";
 import {
   downloadPack,
@@ -1649,8 +1650,8 @@ els.installBtn?.addEventListener("click", async () => {
 });
 
 if ("serviceWorker" in navigator) {
-  /** @type {{ current: boolean }} */
-  const userInitiatedUpdate = { current: false };
+  scrubUpdateQueryParam();
+
   /** @type {{ remoteVersion: string|null, registration: ServiceWorkerRegistration|null }} */
   let pendingUpdate = { remoteVersion: null, registration: null };
 
@@ -1671,7 +1672,6 @@ if ("serviceWorker" in navigator) {
   }
 
   watchServiceWorkerLifecycle({
-    userInitiatedRef: userInitiatedUpdate,
     onVisibleCheck: () => {
       void checkForAppUpdate({
         onAvailable: ({ remoteVersion, registration }) => {
@@ -1679,18 +1679,13 @@ if ("serviceWorker" in navigator) {
         },
       });
     },
-    onUpdateFound: (reg) => {
-      showUpdateBanner(pendingUpdate.remoteVersion, reg);
-    },
   });
 
   if (els.updateNowBtn) {
     els.updateNowBtn.addEventListener("click", () => {
-      userInitiatedUpdate.current = true;
       hideUpdateBanner();
       setStatus(t("updateUpdating"));
       void applyAppUpdate({
-        registration: pendingUpdate.registration,
         remoteVersion: pendingUpdate.remoteVersion,
       });
     });
