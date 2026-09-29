@@ -864,6 +864,36 @@ export class SheetView {
   }
 
   /**
+   * Map OSMD layout units → container content Y, calibrated against a painted note.
+   * OSMD cursor code uses ``10 * unit * zoom`` CSS pixels.
+   * @returns {{k:number, offset:number}|null}
+   */
+  _osmdYCalibration() {
+    const cursor = this.osmd?.cursor;
+    if (!cursor) return null;
+    const zoom = this.osmd?.zoom || 1;
+    const k = 10 * zoom;
+    const host = this.container.getBoundingClientRect();
+    const scrollT = this.container.scrollTop;
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const absY = gn?.PositionAndShape?.AbsolutePosition?.y;
+        const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
+        if (typeof absY !== "number" || !svgEl) continue;
+        const r = svgEl.getBoundingClientRect();
+        if (!(r.height > 0 || r.width > 0)) continue;
+        const domY = r.top - host.top + scrollT;
+        return { k, offset: domY - k * absY };
+      }
+    } catch {
+      /* ignore */
+    }
+    return { k, offset: 0 };
+  }
+
+  /**
    * OSMD MusicSystem for notes under the cursor (one system = one SATB block).
    * @returns {object|null}
    */
@@ -890,10 +920,62 @@ export class SheetView {
           if (sys) return sys;
         }
       }
+
+      // Fallback: graphical measure under the iterator → parent system.
+      const it = cursor.iterator;
+      const entries =
+        it?.CurrentVoiceEntries ||
+        it?.currentVoiceEntries ||
+        (typeof cursor.VoicesUnderCursor === "function" ? cursor.VoicesUnderCursor() : null);
+      const first = Array.isArray(entries) && entries.length ? entries[0] : null;
+      const gve = first?.parentVoiceEntry || first;
+      const measure =
+        gve?.parentStaffEntry?.parentMeasure ||
+        gve?.ParentStaffEntry?.ParentMeasure ||
+        first?.ParentStaffEntry?.ParentMeasure;
+      const staffLine = measure?.ParentStaffLine || measure?.parentStaffLine;
+      const sys = staffLine?.ParentMusicSystem || staffLine?.parentMusicSystem;
+      if (sys) return sys;
     } catch {
       /* ignore */
     }
     return null;
+  }
+
+  /**
+   * Top of uppermost staff line → bottom of lowest staff line for the active
+   * OSMD system, in container content coordinates.
+   * @returns {{top:number, bottom:number}|null}
+   */
+  _activeSystemStaffLineBounds() {
+    const sys = this._musicSystemUnderCursor();
+    const lines = [...(sys?.StaffLines || sys?.staffLines || [])].filter(Boolean);
+    if (!lines.length) return null;
+
+    const cal = this._osmdYCalibration();
+    if (!cal) return null;
+    const { k, offset } = cal;
+    const dist = Number(this.osmd?.rules?.BetweenStaffLinesDistance);
+    const staffHeightUnits = 4 * (Number.isFinite(dist) && dist > 0 ? dist : 1);
+
+    /** @type {{y:number, top:number, bottom:number}[]} */
+    const bands = [];
+    for (const sl of lines) {
+      const ps = sl.PositionAndShape || sl.positionAndShape;
+      const abs = ps?.AbsolutePosition || ps?.absolutePosition;
+      if (!abs || typeof abs.y !== "number") continue;
+      // StaffLine AbsolutePosition.y is the top staff line; five lines span 4× spacing.
+      const top = k * abs.y + offset;
+      const bottom = k * (abs.y + staffHeightUnits) + offset;
+      bands.push({ y: abs.y, top, bottom });
+    }
+    if (!bands.length) return null;
+    bands.sort((a, b) => a.y - b.y);
+
+    return {
+      top: bands[0].top,
+      bottom: bands[bands.length - 1].bottom,
+    };
   }
 
   /**
@@ -922,7 +1004,7 @@ export class SheetView {
 
   /**
    * Staffline groups for only the active system (e.g. one SATB brace), not every
-   * system on the page.
+   * system on the page. Prefers matching OSMD StaffLines by calibrated Y.
    * @returns {Element[]}
    */
   _activeSystemStaffGroups() {
@@ -953,8 +1035,6 @@ export class SheetView {
     const scrollT = this.container.scrollTop;
     const items = all.map((g) => {
       const r = g.getBoundingClientRect();
-      // Prefer staff-line hairline band for ordering; full group bbox includes
-      // lyrics and would merge consecutive systems when clustering by gap.
       const extent = this._staffLineExtent(g, host, scrollT);
       return {
         g,
@@ -964,12 +1044,68 @@ export class SheetView {
     });
     items.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
 
+    // Match each OSMD staff in the active system to the nearest DOM staffline band.
+    const sys = this._musicSystemUnderCursor();
+    const osmdLines = [...(sys?.StaffLines || sys?.staffLines || [])].filter(Boolean);
+    const cal = this._osmdYCalibration();
+    if (osmdLines.length && cal) {
+      const { k, offset } = cal;
+      /** @type {Element[]} */
+      const matched = [];
+      /** @type {Set<Element>} */
+      const used = new Set();
+      const ordered = osmdLines
+        .map((sl) => {
+          const y = sl?.PositionAndShape?.AbsolutePosition?.y;
+          return { sl, y: typeof y === "number" ? y : null };
+        })
+        .filter((x) => x.y != null)
+        .sort((a, b) => a.y - b.y);
+
+      for (const { y } of ordered) {
+        const targetTop = k * y + offset;
+        let best = null;
+        let bestDist = Infinity;
+        for (const it of items) {
+          if (used.has(it.g)) continue;
+          const d = Math.abs(it.top - targetTop);
+          if (d < bestDist) {
+            bestDist = d;
+            best = it;
+          }
+        }
+        // Reject wild mismatches (wrong system).
+        if (best && bestDist < 48) {
+          used.add(best.g);
+          matched.push(best.g);
+        }
+      }
+      if (matched.length) return matched;
+    }
+
     const perSystem = this._stavesPerSystem();
     if (perSystem > 0 && items.length >= perSystem) {
       let seedIdx = items.findIndex((it) => seed.has(it.g));
       if (seedIdx < 0) seedIdx = 0;
-      const start = Math.floor(seedIdx / perSystem) * perSystem;
-      return items.slice(start, start + perSystem).map((it) => it.g);
+      // Grow a contiguous window of ``perSystem`` staves that contains the seed,
+      // preferring the window whose staff-line tops best match a tight pack.
+      let bestStart = Math.max(0, Math.min(seedIdx, items.length - perSystem));
+      // Snap so seed lies inside [start, start+perSystem).
+      bestStart = Math.max(0, Math.min(seedIdx - (perSystem - 1), items.length - perSystem));
+      const startContaining = Math.floor(seedIdx / perSystem) * perSystem;
+      if (startContaining + perSystem <= items.length && seedIdx >= startContaining) {
+        bestStart = startContaining;
+      } else {
+        bestStart = Math.max(0, seedIdx - (perSystem - 1));
+        bestStart = Math.min(bestStart, Math.max(0, items.length - perSystem));
+        // Ensure seed is inside the window.
+        if (seedIdx < bestStart) bestStart = seedIdx;
+        if (seedIdx >= bestStart + perSystem) {
+          bestStart = seedIdx - perSystem + 1;
+        }
+        bestStart = Math.max(0, Math.min(bestStart, items.length - perSystem));
+      }
+      return items.slice(bestStart, bestStart + perSystem).map((it) => it.g);
     }
 
     if (seed.size) return [...seed];
@@ -1015,6 +1151,16 @@ export class SheetView {
     }
     if (minLeft == null) return null;
 
+    // Preferred: OSMD system staff lines (includes bass even when DOM matching slips).
+    const osmdBand = this._activeSystemStaffLineBounds();
+    if (osmdBand && osmdBand.bottom > osmdBand.top) {
+      return {
+        left: minLeft,
+        top: Math.max(0, osmdBand.top),
+        bottom: osmdBand.bottom,
+      };
+    }
+
     const systemStaffs = this._activeSystemStaffGroups();
     let minTop = null;
     let maxBottom = null;
@@ -1026,19 +1172,15 @@ export class SheetView {
         maxBottom = maxBottom == null ? extent.bottom : Math.max(maxBottom, extent.bottom);
         continue;
       }
-      // Fallback when staff lines are hidden: use only the staff-line band approx
-      // from the group's upper portion (exclude lyric area under the staff).
       const r = g.getBoundingClientRect();
       if (!(r.height > 1)) continue;
       const top = r.top - host.top + scrollT;
-      // Typical staff (5 lines) is much shorter than staff+lyrics; clamp fallback.
       const staffBand = Math.min(r.height * 0.45, Math.max(28, r.height * 0.35));
       const bottom = top + staffBand;
       minTop = minTop == null ? top : Math.min(minTop, top);
       maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
     }
 
-    // Stave-off / empty: last resort — noteheads under cursor only (same onset).
     if (minTop == null || maxBottom == null || !(maxBottom > minTop)) {
       try {
         const gnotes =
