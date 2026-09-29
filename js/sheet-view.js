@@ -864,8 +864,65 @@ export class SheetView {
   }
 
   /**
-   * Staffline groups that form the active system (same vertical cluster as the
-   * notes under the OSMD cursor).
+   * OSMD MusicSystem for notes under the cursor (one system = one SATB block).
+   * @returns {object|null}
+   */
+  _musicSystemUnderCursor() {
+    const cursor = this.osmd?.cursor;
+    if (!cursor) return null;
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const staffLineCandidates = [
+          gn?.ParentStaffLine,
+          gn?.parentStaffLine,
+          gn?.staffEntry?.ParentStaffLine,
+          gn?.staffEntry?.parentStaffLine,
+          gn?.ParentStaffEntry?.ParentStaffLine,
+          gn?.ParentStaffEntry?.parentStaffLine,
+          gn?.parentVoiceEntry?.ParentStaffEntry?.ParentStaffLine,
+          gn?.parentVoiceEntry?.parentStaffEntry?.ParentStaffLine,
+        ];
+        for (const sl of staffLineCandidates) {
+          if (!sl) continue;
+          const sys = sl.ParentMusicSystem || sl.parentMusicSystem;
+          if (sys) return sys;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  /**
+   * How many staffline groups belong to one system (e.g. 4 for SATB).
+   * @returns {number}
+   */
+  _stavesPerSystem() {
+    const sys = this._musicSystemUnderCursor();
+    const fromSys = sys?.StaffLines?.length || sys?.staffLines?.length;
+    if (fromSys > 0) return fromSys | 0;
+
+    try {
+      const instruments = this.osmd?.Sheet?.Instruments || [];
+      let n = 0;
+      for (const instr of instruments) {
+        if (instr?.Visible === false) continue;
+        const staves = instr.Staves || instr.staves;
+        n += Array.isArray(staves) && staves.length ? staves.length : 1;
+      }
+      if (n > 0) return n;
+    } catch {
+      /* ignore */
+    }
+    return Math.max(1, this.instrumentVoices?.length || 1);
+  }
+
+  /**
+   * Staffline groups for only the active system (e.g. one SATB brace), not every
+   * system on the page.
    * @returns {Element[]}
    */
   _activeSystemStaffGroups() {
@@ -896,39 +953,27 @@ export class SheetView {
     const scrollT = this.container.scrollTop;
     const items = all.map((g) => {
       const r = g.getBoundingClientRect();
+      // Prefer staff-line hairline band for ordering; full group bbox includes
+      // lyrics and would merge consecutive systems when clustering by gap.
+      const extent = this._staffLineExtent(g, host, scrollT);
       return {
         g,
-        top: r.top - host.top + scrollT,
-        bottom: r.bottom - host.top + scrollT,
+        top: extent ? extent.top : r.top - host.top + scrollT,
+        bottom: extent ? extent.bottom : r.bottom - host.top + scrollT,
       };
     });
-    items.sort((a, b) => a.top - b.top);
+    items.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
 
-    /** @type {Element[][]} */
-    const clusters = [];
-    let i = 0;
-    while (i < items.length) {
-      /** @type {Element[]} */
-      const cluster = [items[i].g];
-      let bottom = items[i].bottom;
-      let j = i + 1;
-      // Staves of one system sit within a modest vertical gap; next system is farther.
-      while (j < items.length && items[j].top <= bottom + 120) {
-        cluster.push(items[j].g);
-        bottom = Math.max(bottom, items[j].bottom);
-        j += 1;
-      }
-      clusters.push(cluster);
-      i = j;
+    const perSystem = this._stavesPerSystem();
+    if (perSystem > 0 && items.length >= perSystem) {
+      let seedIdx = items.findIndex((it) => seed.has(it.g));
+      if (seedIdx < 0) seedIdx = 0;
+      const start = Math.floor(seedIdx / perSystem) * perSystem;
+      return items.slice(start, start + perSystem).map((it) => it.g);
     }
 
-    if (seed.size) {
-      const hit = clusters.find((c) => c.some((g) => seed.has(g)));
-      if (hit) return hit;
-      return [...seed];
-    }
-    // No pitched notes under cursor — fall back to the first system.
-    return clusters[0] || [];
+    if (seed.size) return [...seed];
+    return items.slice(0, Math.max(1, perSystem)).map((it) => it.g);
   }
 
   /**
@@ -981,12 +1026,14 @@ export class SheetView {
         maxBottom = maxBottom == null ? extent.bottom : Math.max(maxBottom, extent.bottom);
         continue;
       }
-      // Fallback when staff lines are hidden/undrawn: use the staffline group box,
-      // but prefer a tight band around visible notation if present.
+      // Fallback when staff lines are hidden: use only the staff-line band approx
+      // from the group's upper portion (exclude lyric area under the staff).
       const r = g.getBoundingClientRect();
       if (!(r.height > 1)) continue;
       const top = r.top - host.top + scrollT;
-      const bottom = r.bottom - host.top + scrollT;
+      // Typical staff (5 lines) is much shorter than staff+lyrics; clamp fallback.
+      const staffBand = Math.min(r.height * 0.45, Math.max(28, r.height * 0.35));
+      const bottom = top + staffBand;
       minTop = minTop == null ? top : Math.min(minTop, top);
       maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
     }
