@@ -34,6 +34,13 @@
       "file": "please-come-home-for-christmas.musicxml",
       "format": "musicxml",
       "description": "Voice with alto sax, piano, and bass"
+    },
+    {
+      "id": "entre-le-boeuf-et-lane-gris",
+      "title": "Entre le bœuf et l'âne gris",
+      "file": "entre-le-boeuf-et-lane-gris.musicxml",
+      "format": "musicxml",
+      "description": "SATB choir (arr. Felix de Nobel)"
     }
   ]
 }

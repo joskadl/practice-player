@@ -5,7 +5,7 @@
  * deploys without a hard refresh. Heavy/static assets stay cache-first.
  */
 
-const CACHE = "midi-practice-player-v27";
+const CACHE = "midi-practice-player-v28";
 
 const PRECACHE = [
   "./",
@@ -42,6 +42,7 @@ const PRECACHE = [
   "./examples/gaudete-christus-est-natus.musicxml",
   "./examples/gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.musicxml",
   "./examples/please-come-home-for-christmas.musicxml",
+  "./examples/entre-le-boeuf-et-lane-gris.musicxml",
 ];
 
 /** True for files that must prefer the network (app code / markup). */

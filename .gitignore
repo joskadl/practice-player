@@ -8,6 +8,7 @@ node_modules/
 # MuseScore sources (export scrubbed MusicXML for the published set)
 examples/*.mscz
 examples/_pdf_pages/
+examples/_img_crops/
 examples/_convert-job.json
 examples/*.pdf
 
