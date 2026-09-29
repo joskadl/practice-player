@@ -142,6 +142,8 @@ export class SheetView {
     this._engravingDefaults = null;
     /** When false, user scrolled away — auto-follow resumes once the cursor re-enters view. */
     this._followScroll = true;
+    /** Tallest system height — playhead bar uses this length score-wide. */
+    this._maxCursorHeight = 0;
     /** Ignore scroll events until this time (ms) after a programmatic scroll. */
     this._ignoreScrollUntil = 0;
     this._lastScrollLeft = 0;
@@ -183,6 +185,8 @@ export class SheetView {
     this._pending = null;
     this._svgLayoutBackup = null;
     this.annotMode = null;
+    /** Tallest system height seen — playhead bar stays this long so follow Y is stable. */
+    this._maxCursorHeight = 0;
     this._setDirty(false);
     this.container.classList.remove(
       "pp-hide-staves",
@@ -444,6 +448,7 @@ export class SheetView {
     }
     this.osmd.render();
     this.applyVoiceVisibility();
+    this._refreshMaxCursorHeight();
     this._finishAnnotationPresentation();
     this._buildTimeline();
     this._bindInlineEditors();
@@ -512,6 +517,7 @@ export class SheetView {
       this.osmd.render();
       this._mapInstruments(opts.voices || []);
       this.applyVoiceVisibility();
+      this._refreshMaxCursorHeight();
       this._finishAnnotationPresentation();
       this._buildTimeline();
       this._bindInlineEditors();
@@ -963,21 +969,63 @@ export class SheetView {
   }
 
   /**
-   * Place/size the cursor bar to the current onset: X at noteheads, height spanning
-   * whatever layers are visible on that system (staves / lyrics / chords / notes).
+   * Place/size the cursor bar to the current onset: X at noteheads, top at the
+   * active system. Height is the score-wide max so the bar (and follow target)
+   * does not jump between short and tall systems.
    */
   _nudgeCursorToNoteheads() {
     const el = this.osmd?.cursor?.cursorElement;
     if (!el) return;
     const bounds = this._cursorAlignBounds();
     if (!bounds) return;
-    const height = Math.max(16, bounds.bottom - bounds.top);
+    const natural = Math.max(16, bounds.bottom - bounds.top);
+    if (natural > (this._maxCursorHeight || 0)) this._maxCursorHeight = natural;
+    const height = Math.max(natural, this._maxCursorHeight || natural);
     el.style.left = `${Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX)}px`;
     el.style.top = `${bounds.top}px`;
     el.style.height = `${height}px`;
     el.style.width = el.style.width || "2px";
     el.style.maxHeight = "none";
     el.style.objectFit = "fill";
+  }
+
+  /**
+   * Measure the tallest vertical system cluster so the playhead can use a
+   * constant length for the whole score (avoids follow-scroll Y jumps).
+   */
+  _refreshMaxCursorHeight() {
+    const groups = [...(this.container.querySelectorAll("g.staffline") || [])];
+    if (!groups.length) {
+      this._maxCursorHeight = 0;
+      return;
+    }
+    const host = this.container.getBoundingClientRect();
+    const scrollT = this.container.scrollTop;
+    const items = [];
+    for (const g of groups) {
+      const r = g.getBoundingClientRect();
+      if (!(r.height > 1)) continue;
+      items.push({
+        top: r.top - host.top + scrollT,
+        bottom: r.bottom - host.top + scrollT,
+      });
+    }
+    items.sort((a, b) => a.top - b.top);
+    let maxH = 0;
+    let i = 0;
+    while (i < items.length) {
+      let top = items[i].top;
+      let bottom = items[i].bottom;
+      let j = i + 1;
+      // Stafflines in one system sit within a modest vertical gap.
+      while (j < items.length && items[j].top <= bottom + 120) {
+        bottom = Math.max(bottom, items[j].bottom);
+        j += 1;
+      }
+      maxH = Math.max(maxH, bottom - top);
+      i = j;
+    }
+    this._maxCursorHeight = Math.max(40, Math.ceil(maxH + 8));
   }
 
   /**
@@ -1717,9 +1765,8 @@ export class SheetView {
   }
 
   /**
-   * Keep the playhead readable without oscillating between two nearby scroll tops.
-   * Follow mode uses a wide comfort band + fixed target band so small cursor nudges
-   * (e.g. system changes) do not fight the previous scroll position.
+   * Keep the active system’s top on a fixed horizontal “rail” in the viewport
+   * while following, so changing systems / cursor lengths does not jump the view.
    * @param {{mode?: "follow"|"snap"}} [opts]
    */
   _scrollCursorIntoView(opts = {}) {
@@ -1735,20 +1782,14 @@ export class SheetView {
     if (er.left < pr.left + marginX) dx = er.left - pr.left - marginX;
     else if (er.right > pr.right - marginX) dx = er.right - pr.right + marginX;
 
-    // Comfort band: only pan vertically when the cursor leaves ~12%–78% of the port.
-    // Target band: place the cursor mid near ~32% from the top (stable, not edge-hugging).
-    const comfortTop = pr.top + pr.height * 0.12;
-    const comfortBottom = pr.bottom - pr.height * 0.22;
-    const targetY = pr.top + pr.height * 0.32;
-    const cursorMid = (er.top + er.bottom) / 2;
-    let dy = 0;
-    const mode = opts.mode || "follow";
-    if (mode === "snap" || cursorMid < comfortTop || cursorMid > comfortBottom) {
-      dy = cursorMid - targetY;
-    }
+    // Pin the cursor TOP (system start), not the mid of a variable-height bar.
+    const FOLLOW_TOP_FRAC = 0.14;
+    const targetTop = pr.top + pr.height * FOLLOW_TOP_FRAC;
+    let dy = er.top - targetTop;
+    // Ignore sub-pixel / layout noise only.
+    if (Math.abs(dy) < 2.5) dy = 0;
 
     if (!dx && !dy) return;
-    // Ignore scroll events for long enough that layout + browser coalescing settle.
     this._ignoreScrollUntil = performance.now() + 160;
     parent.scrollLeft += dx;
     parent.scrollTop += dy;
@@ -1807,6 +1848,7 @@ export class SheetView {
       } catch {
         /* ignore */
       }
+      this._refreshMaxCursorHeight();
       this._finishAnnotationPresentation();
       this._buildTimeline();
       this._bindInlineEditors();
