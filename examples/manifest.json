@@ -1,0 +1,18 @@
+{
+  "examples": [
+    {
+      "id": "stille-nacht",
+      "title": "Stille Nacht",
+      "file": "stille-nacht.musicxml",
+      "format": "musicxml",
+      "description": "SATB choir arrangement (Dutch lyrics)"
+    },
+    {
+      "id": "demo",
+      "title": "Demo (MIDI)",
+      "file": "demo.mid",
+      "format": "midi",
+      "description": "Short MIDI demo for playback tests"
+    }
+  ]
+}

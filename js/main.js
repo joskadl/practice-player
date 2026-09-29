@@ -10,6 +10,10 @@ import {
   readMusicXmlMeta,
   downloadMusicXml,
   applyMusicXmlEdits,
+  transposeMusicXml,
+  readRecordingUrl,
+  writeRecordingUrl,
+  stripPersonalNames,
 } from "./musicxml-edit.js";
 import { ChoirSynth } from "./synth.js";
 import { Transport } from "./transport.js";
@@ -40,7 +44,14 @@ const EYE_SLASH_ICON =
 
 const els = {
   fileInput: document.getElementById("fileInput"),
+  openMenuWrap: document.getElementById("openMenuWrap"),
+  openMenuBtn: document.getElementById("openMenuBtn"),
+  openMenu: document.getElementById("openMenu"),
+  openDeviceBtn: document.getElementById("openDeviceBtn"),
+  examplesList: document.getElementById("examplesList"),
   fileName: document.getElementById("fileName"),
+  recordingLink: document.getElementById("recordingLink"),
+  recordingEditBtn: document.getElementById("recordingEditBtn"),
   instrumentSelect: document.getElementById("instrumentSelect"),
   status: document.getElementById("status"),
   playBtn: document.getElementById("playBtn"),
@@ -64,6 +75,8 @@ const els = {
   sheetZoomInBtn: document.getElementById("sheetZoomInBtn"),
   sheetZoomLabel: document.getElementById("sheetZoomLabel"),
   sheetPdfBtn: document.getElementById("sheetPdfBtn"),
+  transposeDownBtn: document.getElementById("transposeDownBtn"),
+  transposeUpBtn: document.getElementById("transposeUpBtn"),
   sheetSaveBtn: document.getElementById("sheetSaveBtn"),
   sheetAnnotBar: document.getElementById("sheetAnnotBar"),
   layerStavesBtn: document.getElementById("layerStavesBtn"),
@@ -78,7 +91,6 @@ const els = {
   accompLabel: document.getElementById("accompLabel"),
   tuningRow: document.getElementById("tuningRow"),
   tuningToggle: document.getElementById("tuningToggle"),
-  tuningToggleLabel: document.getElementById("tuningToggleLabel"),
   tuningModeLabel: document.getElementById("tuningModeLabel"),
   installBtn: document.getElementById("installBtn"),
   appVersion: document.getElementById("appVersion"),
@@ -362,7 +374,9 @@ let project = null;
 /** @type {"roll"|"sheet"} */
 let scoreView = "roll";
 /** When JustPlay meta is present: true = apply pitch bends (JI), false = 12-TET center. */
-let jiEnabled = true;
+let jiEnabled = false;
+/** Cached examples catalog from examples/manifest.json (null until first fetch). */
+let examplesCatalog = null;
 /** Original loaded file name (for export naming). */
 let sourceFileName = "";
 /** Deferred PWA install prompt from the browser. */
@@ -456,6 +470,142 @@ function updateSheetZoomLabel() {
 
 function updateSheetToolbar() {
   if (els.sheetSaveBtn) els.sheetSaveBtn.hidden = !sheet.dirty;
+}
+
+function currentMusicXml() {
+  if (!project?.musicXml) return "";
+  try {
+    return sheet.dirty ? sheet.buildEditedXml() : project.musicXml;
+  } catch {
+    return project.musicXml;
+  }
+}
+
+function hostLabel(url) {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return t("recordingLink");
+  }
+}
+
+function updateRecordingUi(xmlText) {
+  const xml = xmlText || project?.musicXml || "";
+  const url = xml ? readRecordingUrl(xml) : "";
+  const hasScore = !!project?.musicXml;
+  if (els.recordingEditBtn) els.recordingEditBtn.hidden = !hasScore;
+  if (!els.recordingLink) return;
+  if (!url) {
+    els.recordingLink.hidden = true;
+    els.recordingLink.removeAttribute("href");
+    els.recordingLink.textContent = "";
+    return;
+  }
+  els.recordingLink.hidden = false;
+  els.recordingLink.href = url;
+  els.recordingLink.textContent = hostLabel(url);
+  els.recordingLink.title = t("recordingLinkTip");
+}
+
+/**
+ * Re-parse MusicXML into the live project (sheet + playback) after an XML mutation.
+ * @param {string} xml
+ * @param {{label?: string, dirty?: boolean}} [opts]
+ */
+async function applyMutatedMusicXml(xml, opts = {}) {
+  if (!project) return;
+  const playhead = transport.playheadTick | 0;
+  const wasPlaying = transport.playing;
+  if (wasPlaying) transport.pause();
+
+  const mutedParts = new Set();
+  const soloParts = new Set();
+  const hiddenParts = new Set();
+  for (const v of project.voices || []) {
+    if (muted.has(v.id) && v.partId) mutedParts.add(v.partId);
+    if (solo.has(v.id) && v.partId) soloParts.add(v.partId);
+    if (hiddenVoices.has(v.id) && v.partId) hiddenParts.add(v.partId);
+  }
+  const colorByPart = new Map();
+  for (const v of project.voices || []) {
+    if (v.partId && voiceColors.has(v.id)) colorByPart.set(v.partId, voiceColors.get(v.id));
+  }
+
+  const parsed = parseMusicXml(xml);
+  parsed.musicXml = xml;
+  project = wrapProject(parsed);
+  muted.clear();
+  solo.clear();
+  hiddenVoices.clear();
+  voiceColors.clear();
+  for (const v of project.voices) {
+    if (v.partId && mutedParts.has(v.partId)) muted.add(v.id);
+    if (v.partId && soloParts.has(v.partId)) solo.add(v.id);
+    if (v.partId && hiddenParts.has(v.partId)) hiddenVoices.add(v.id);
+    if (v.partId && colorByPart.has(v.partId)) voiceColors.set(v.id, colorByPart.get(v.partId));
+  }
+
+  transport.setProject(project);
+  roll.setProject(project);
+  els.seek.max = String(project.durationTicks);
+  els.durationLabel.textContent = formatTime(project.secondsAt(project.durationTicks));
+  updateTuningUi();
+
+  await sheet.reloadXml(xml, {
+    voices: project.voices,
+    isVoiceAudible: voiceAudible,
+    voiceGain,
+    isVoiceVisible: voiceVisible,
+    ticksPerBeat: project.ticksPerBeat,
+    onsetTicks: project.onsetTicks || [],
+  });
+  if (opts.dirty !== false) sheet.markDirty();
+  else sheet.markSaved(xml);
+
+  const tick = Math.max(0, Math.min(playhead, project.durationTicks | 0));
+  seekTo(tick);
+  renderVoices();
+  updateSheetToolbar();
+  updateRecordingUi(xml);
+  syncAnnotBar(sheet.getLayers());
+  if (opts.label) void recordSharedEdit(opts.label);
+}
+
+async function transposeScore(semitones) {
+  if (!project?.musicXml) return;
+  try {
+    const base = currentMusicXml();
+    const next = transposeMusicXml(base, semitones);
+    const label =
+      semitones > 0
+        ? `Transpose +${semitones}`
+        : `Transpose ${semitones}`;
+    await applyMutatedMusicXml(next, { label, dirty: true });
+    setStatus(
+      semitones > 0
+        ? `Transposed up ${semitones} semitone${semitones === 1 ? "" : "s"}`
+        : `Transposed down ${Math.abs(semitones)} semitone${Math.abs(semitones) === 1 ? "" : "s"}`,
+    );
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
+}
+
+async function editRecordingUrl() {
+  if (!project?.musicXml) return;
+  const current = readRecordingUrl(currentMusicXml());
+  const next = window.prompt(t("recordingPrompt"), current || "");
+  if (next == null) return;
+  try {
+    const xml = writeRecordingUrl(currentMusicXml(), next);
+    await applyMutatedMusicXml(xml, {
+      label: next.trim() ? "Set recording URL" : "Clear recording URL",
+      dirty: true,
+    });
+    setStatus(next.trim() ? t("recordingLink") : "");
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
 }
 
 function syncAnnotBar(layers) {
@@ -635,11 +785,11 @@ function updateTuningUi() {
   els.tuningRow.hidden = false;
   const canJi = project.hasPitchBends;
   els.tuningToggle.disabled = !canJi;
-  const tipEl = els.tuningToggleLabel || els.tuningToggle;
+  const tipEl = els.tuningRow;
   if (!canJi) {
     jiEnabled = false;
     els.tuningToggle.checked = false;
-    if (els.tuningModeLabel) els.tuningModeLabel.textContent = t("tuningJi");
+    if (els.tuningModeLabel) els.tuningModeLabel.textContent = t("tuningStandard");
     if (tipEl) tipEl.title = t("tuningTipEmpty");
     transport.setApplyPitchBends(false);
     return;
@@ -649,9 +799,7 @@ function updateTuningUi() {
     els.tuningModeLabel.textContent = jiEnabled ? t("tuningJi") : t("tuningStandard");
   }
   if (tipEl) {
-    tipEl.title = jiEnabled
-      ? t("tuningTipJi", { range: project.pitchBendRange })
-      : t("tuningTipStandard");
+    tipEl.title = jiEnabled ? t("tuningTipJi") : t("tuningTipStandard");
   }
   transport.setApplyPitchBends(jiEnabled);
 }
@@ -826,7 +974,8 @@ async function applyProject(parsed, fileName, opts = {}) {
   sourceFileName = fileName || "";
   voiceColors.clear();
   hiddenVoices.clear();
-  jiEnabled = !!(parsed.justPlayMeta && parsed.hasPitchBends);
+  // Prefer 12-TET; users can opt into JI when markers are present.
+  jiEnabled = false;
   transport.setProject(project);
   roll.setProject(project);
   els.fileName.textContent = fileName;
@@ -836,6 +985,7 @@ async function applyProject(parsed, fileName, opts = {}) {
   els.timeLabel.textContent = formatTime(0);
   setLoadedUi(true);
   updateTuningUi();
+  updateRecordingUi(parsed.musicXml || "");
 
   if (parsed.musicXml) {
     setStatus("Rendering sheet music…");
@@ -873,6 +1023,7 @@ async function applyProject(parsed, fileName, opts = {}) {
     els.sheetMusic.innerHTML =
       '<p class="hint sheet-placeholder">' + t("sheetPlaceholder") + "</p>";
     scoreView = "roll";
+    updateRecordingUi("");
   }
 
   renderVoices();
@@ -939,11 +1090,124 @@ async function loadFile(file) {
       '<p class="hint sheet-placeholder">' + t("sheetPlaceholder") + "</p>";
     setLoadedUi(false);
     updateTuningUi();
+    updateRecordingUi("");
     renderVoices();
     updateScoreViewUi();
     setStatus(err?.message || String(err), true);
   }
 }
+
+function setOpenMenuOpen(open) {
+  if (!els.openMenu || !els.openMenuBtn) return;
+  els.openMenu.hidden = !open;
+  els.openMenuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+async function fetchExamplesCatalog() {
+  if (examplesCatalog) return examplesCatalog;
+  const res = await fetch("./examples/manifest.json", { cache: "no-cache" });
+  if (!res.ok) throw new Error(t("examplesLoadError"));
+  const data = await res.json();
+  examplesCatalog = Array.isArray(data?.examples) ? data.examples : [];
+  return examplesCatalog;
+}
+
+async function populateExamplesMenu() {
+  if (!els.examplesList) return;
+  els.examplesList.innerHTML = "";
+  try {
+    const examples = await fetchExamplesCatalog();
+    if (!examples.length) {
+      const empty = document.createElement("div");
+      empty.className = "open-menu-empty";
+      empty.textContent = t("examplesEmpty");
+      els.examplesList.appendChild(empty);
+      return;
+    }
+    for (const ex of examples) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "open-menu-item";
+      btn.setAttribute("role", "menuitem");
+      btn.textContent = ex.title || ex.file || ex.id;
+      if (ex.description) btn.title = ex.description;
+      btn.addEventListener("click", () => {
+        setOpenMenuOpen(false);
+        void loadExample(ex);
+      });
+      els.examplesList.appendChild(btn);
+    }
+  } catch (err) {
+    const empty = document.createElement("div");
+    empty.className = "open-menu-empty";
+    empty.textContent = err?.message || t("examplesLoadError");
+    els.examplesList.appendChild(empty);
+  }
+}
+
+async function loadExample(ex) {
+  const file = String(ex.file || "").replace(/^\/+/, "");
+  if (!file) return;
+  const url = `./examples/${file}`;
+  setStatus(`Loading ${ex.title || file}…`);
+  transport.stop();
+  muted.clear();
+  solo.clear();
+  hiddenVoices.clear();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Could not load ${file}`);
+    let parsed;
+    const displayName = ex.title || file;
+    if (isMusicXmlName(file)) {
+      let xmlText = await res.text();
+      xmlText = stripPersonalNames(xmlText);
+      parsed = parseMusicXml(xmlText);
+    } else {
+      const buffer = await res.arrayBuffer();
+      parsed = parseMidi(buffer);
+      if (!parsed.notes.length) throw new Error("No notes found in this MIDI file");
+    }
+    await applyProject(parsed, displayName);
+  } catch (err) {
+    project = null;
+    sourceFileName = "";
+    transport.setProject(null);
+    roll.setProject(null);
+    sheet.clear();
+    els.sheetMusic.innerHTML =
+      '<p class="hint sheet-placeholder">' + t("sheetPlaceholder") + "</p>";
+    setLoadedUi(false);
+    updateTuningUi();
+    updateRecordingUi("");
+    renderVoices();
+    updateScoreViewUi();
+    setStatus(err?.message || String(err), true);
+  }
+}
+
+els.openMenuBtn?.addEventListener("click", () => {
+  const willOpen = !!els.openMenu?.hidden;
+  setOpenMenuOpen(willOpen);
+  if (willOpen) void populateExamplesMenu();
+});
+
+els.openDeviceBtn?.addEventListener("click", () => {
+  setOpenMenuOpen(false);
+  els.fileInput?.click();
+});
+
+document.addEventListener("click", (ev) => {
+  if (!els.openMenuWrap || els.openMenu?.hidden) return;
+  if (els.openMenuWrap.contains(ev.target)) return;
+  setOpenMenuOpen(false);
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && els.openMenu && !els.openMenu.hidden) {
+    setOpenMenuOpen(false);
+  }
+});
 
 els.fileInput.addEventListener("change", () => {
   const file = els.fileInput.files?.[0];
@@ -986,6 +1250,16 @@ els.sheetPdfBtn?.addEventListener("click", async () => {
 
 els.sheetSaveBtn?.addEventListener("click", () => {
   void saveSheetEdits();
+});
+
+els.transposeDownBtn?.addEventListener("click", () => {
+  void transposeScore(-1);
+});
+els.transposeUpBtn?.addEventListener("click", () => {
+  void transposeScore(1);
+});
+els.recordingEditBtn?.addEventListener("click", () => {
+  void editRecordingUrl();
 });
 
 wireLayerToggle(els.layerStavesBtn, "staves");

@@ -242,6 +242,7 @@ body {
 }
 
 .file-btn,
+.file-btn-like,
 button {
   appearance: none;
   border: 1px solid var(--accent);
@@ -259,6 +260,98 @@ button:disabled,
   cursor: not-allowed;
 }
 
+.open-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.open-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 30;
+  min-width: 14rem;
+  max-width: min(20rem, 90vw);
+  padding: 0.35rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(28, 26, 23, 0.12);
+}
+
+.open-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.open-menu-item:hover,
+.open-menu-item:focus-visible {
+  background: rgba(47, 93, 80, 0.1);
+  color: var(--accent);
+  outline: none;
+}
+
+.open-menu-sep {
+  height: 1px;
+  margin: 0.3rem 0.4rem;
+  background: var(--line);
+}
+
+.open-menu-heading {
+  padding: 0.35rem 0.65rem 0.15rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.open-menu-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.open-menu-empty {
+  padding: 0.4rem 0.65rem 0.55rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.tuning-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  padding: 0.15rem 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.tuning-inline input {
+  margin: 0;
+  accent-color: var(--accent);
+  transform: scale(0.9);
+}
+
+.tuning-inline:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 button.secondary,
 .voice-actions button {
   background: transparent;
@@ -268,6 +361,31 @@ button.secondary,
 .file-name {
   color: var(--muted);
   font-size: 0.95rem;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recording-link {
+  color: var(--accent);
+  font-size: 0.82rem;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recording-link:hover,
+.recording-link:focus-visible {
+  border-bottom-color: var(--accent);
+}
+
+.recording-edit-btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.78rem;
 }
 
 .inline {
@@ -462,6 +580,12 @@ select {
   align-items: center;
   gap: 0.25rem;
   margin-left: 0.35rem;
+}
+
+.sheet-transpose {
+  display: inline-flex;
+  gap: 0.15rem;
+  margin-left: 0.1rem;
 }
 
 .sheet-annot-bar {

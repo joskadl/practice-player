@@ -25,11 +25,19 @@
     </header>
 
     <section class="panel load-panel">
-      <label class="file-btn" data-i18n-title="openFile">
-        <span data-i18n="openFile">Open file</span>
+      <div class="open-menu" id="openMenuWrap">
+        <button type="button" id="openMenuBtn" class="file-btn-like" data-i18n="open" data-i18n-title="openTip" aria-haspopup="menu" aria-expanded="false">Open</button>
+        <div id="openMenu" class="open-menu-panel" role="menu" hidden>
+          <button type="button" id="openDeviceBtn" class="open-menu-item" role="menuitem" data-i18n="openFromDevice">From this device…</button>
+          <div class="open-menu-sep" role="separator"></div>
+          <div class="open-menu-heading" data-i18n="examples">Examples</div>
+          <div id="examplesList" class="open-menu-examples"></div>
+        </div>
         <input id="fileInput" type="file" accept=".mid,.midi,.musicxml,.xml,audio/midi,application/vnd.recordare.musicxml+xml,application/xml,text/xml" hidden />
-      </label>
+      </div>
       <span id="fileName" class="file-name">No file loaded</span>
+      <a id="recordingLink" class="recording-link" hidden rel="noopener noreferrer" target="_blank" data-i18n-title="recordingLinkTip"></a>
+      <button type="button" id="recordingEditBtn" class="secondary recording-edit-btn" hidden data-i18n="recordingEdit" data-i18n-title="recordingEditTip">Recording…</button>
       <label class="inline">
         <span data-i18n="sound">Sound</span>
         <select id="instrumentSelect">
@@ -43,16 +51,6 @@
         </select>
       </label>
       <span id="status" class="status" aria-live="polite"></span>
-    </section>
-
-    <section id="tuningRow" class="panel tuning-panel" hidden>
-      <label class="toggle" id="tuningToggleLabel" data-i18n-title="tuningTipStandard">
-        <input id="tuningToggle" type="checkbox" />
-        <span class="toggle-ui" aria-hidden="true"></span>
-        <span class="toggle-label">
-          <strong id="tuningModeLabel" data-i18n="tuningJi">Just Intonation</strong>
-        </span>
-      </label>
     </section>
 
     <section class="panel transport-panel">
@@ -71,6 +69,10 @@
         <input id="seek" type="range" min="0" max="0" value="0" step="1" disabled />
         <span id="durationLabel">0:00.0</span>
       </div>
+      <label id="tuningRow" class="tuning-inline" hidden data-i18n-title="tuningTipStandard">
+        <input id="tuningToggle" type="checkbox" />
+        <span id="tuningModeLabel" data-i18n="tuningStandard">12-TET</span>
+      </label>
     </section>
 
     <section class="panel score-panel" data-i18n-title="scoreTip">
@@ -87,6 +89,10 @@
           <button type="button" id="sheetPdfBtn" class="secondary sheet-pdf-btn" data-i18n-title="exportPdfTip" data-i18n-aria="exportPdf">
             PDF
           </button>
+          <span class="sheet-transpose" role="group" data-i18n-aria="transpose">
+            <button type="button" id="transposeDownBtn" class="secondary" data-i18n-title="transposeDownTip" data-i18n-aria="transposeDown">−</button>
+            <button type="button" id="transposeUpBtn" class="secondary" data-i18n-title="transposeUpTip" data-i18n-aria="transposeUp">+</button>
+          </span>
           <button type="button" id="sheetSaveBtn" class="sheet-save-btn" hidden data-i18n-title="saveScoreTip" data-i18n-aria="saveScore">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
               <path fill="currentColor" d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/>
