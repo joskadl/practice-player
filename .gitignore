@@ -4,3 +4,9 @@ Thumbs.db
 .idea/
 .vscode/
 node_modules/
+
+# MuseScore sources (export scrubbed MusicXML for the published set)
+examples/*.mscz
+examples/_pdf_pages/
+examples/_convert-job.json
+
