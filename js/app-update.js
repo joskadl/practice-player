@@ -62,14 +62,33 @@ export function scrubUpdateQueryParam() {
 }
 
 /**
+ * Label for the post-update status line.
+ * Prefers the version that is actually running once it matches (or exceeds)
+ * the target we applied — never report the pre-update shell version as success.
+ *
  * @returns {string|null}
  */
 export function consumeJustUpdatedLabel() {
   try {
-    const v = sessionStorage.getItem(UPDATED_FLAG);
-    if (!v) return null;
+    const reloading = sessionStorage.getItem(RELOAD_FLAG) === "1";
+    if (reloading) sessionStorage.removeItem(RELOAD_FLAG);
+
+    const target =
+      sessionStorage.getItem(APPLIED_FLAG) ||
+      sessionStorage.getItem(UPDATED_FLAG) ||
+      null;
+
+    if (!reloading && !target) return null;
+
+    // Still on an older shell after Update now — don't claim success yet.
+    if (target && compareSemver(APP_VERSION, target) < 0) {
+      return null;
+    }
+
     sessionStorage.removeItem(UPDATED_FLAG);
-    return formatVersionLabel(v);
+    sessionStorage.removeItem(APPLIED_FLAG);
+    // Announce the build that is actually running.
+    return formatVersionLabel(APP_VERSION);
   } catch {
     return null;
   }
@@ -140,8 +159,9 @@ export async function applyAppUpdate(opts = {}) {
 
   try {
     sessionStorage.setItem(RELOAD_FLAG, "1");
-    sessionStorage.setItem(UPDATED_FLAG, remoteVersion || APP_VERSION);
-    if (remoteVersion) sessionStorage.setItem(APPLIED_FLAG, remoteVersion);
+    const target = remoteVersion || APP_VERSION;
+    sessionStorage.setItem(UPDATED_FLAG, target);
+    sessionStorage.setItem(APPLIED_FLAG, target);
     sessionStorage.removeItem(DISMISS_FLAG);
   } catch {
     /* ignore */
@@ -178,15 +198,6 @@ export async function applyAppUpdate(opts = {}) {
  */
 export async function checkForAppUpdate(opts = {}) {
   const { onAvailable, onStatus, onError } = opts;
-
-  try {
-    if (sessionStorage.getItem(RELOAD_FLAG) === "1") {
-      sessionStorage.removeItem(RELOAD_FLAG);
-      sessionStorage.setItem(UPDATED_FLAG, APP_VERSION);
-    }
-  } catch {
-    /* ignore */
-  }
 
   if (!("serviceWorker" in navigator)) {
     return { available: false, remoteVersion: null, registration: null };
