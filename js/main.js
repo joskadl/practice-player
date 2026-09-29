@@ -26,6 +26,9 @@ import {
   checkForAppUpdate,
   consumeJustUpdatedLabel,
   watchServiceWorkerLifecycle,
+  applyAppUpdate,
+  dismissUpdatePrompt,
+  formatVersionLabel,
 } from "./app-update.js";
 import {
   downloadPack,
@@ -103,6 +106,10 @@ const els = {
   tuningModeLabel: document.getElementById("tuningModeLabel"),
   installBtn: document.getElementById("installBtn"),
   appVersion: document.getElementById("appVersion"),
+  updateBanner: document.getElementById("updateBanner"),
+  updateBannerText: document.getElementById("updateBannerText"),
+  updateNowBtn: document.getElementById("updateNowBtn"),
+  updateLaterBtn: document.getElementById("updateLaterBtn"),
   syncPanel: document.getElementById("syncPanel"),
   syncStatus: document.getElementById("syncStatus"),
   syncUndoBtn: document.getElementById("syncUndoBtn"),
@@ -1642,23 +1649,78 @@ els.installBtn?.addEventListener("click", async () => {
 });
 
 if ("serviceWorker" in navigator) {
-  watchServiceWorkerLifecycle(() => {
-    setStatus(t("updateChecking"));
+  /** @type {{ current: boolean }} */
+  const userInitiatedUpdate = { current: false };
+  /** @type {{ remoteVersion: string|null, registration: ServiceWorkerRegistration|null }} */
+  let pendingUpdate = { remoteVersion: null, registration: null };
+
+  function showUpdateBanner(remoteVersion, registration) {
+    pendingUpdate = { remoteVersion, registration: registration || null };
+    if (!els.updateBanner) return;
+    const label = formatVersionLabel(remoteVersion);
+    if (els.updateBannerText) {
+      els.updateBannerText.textContent = label
+        ? t("updateAvailable").replace("{version}", label)
+        : t("updateAvailableGeneric");
+    }
+    els.updateBanner.hidden = false;
+  }
+
+  function hideUpdateBanner() {
+    if (els.updateBanner) els.updateBanner.hidden = true;
+  }
+
+  watchServiceWorkerLifecycle({
+    userInitiatedRef: userInitiatedUpdate,
+    onVisibleCheck: () => {
+      void checkForAppUpdate({
+        onAvailable: ({ remoteVersion, registration }) => {
+          showUpdateBanner(remoteVersion, registration);
+        },
+      });
+    },
+    onUpdateFound: (reg) => {
+      showUpdateBanner(pendingUpdate.remoteVersion, reg);
+    },
   });
+
+  if (els.updateNowBtn) {
+    els.updateNowBtn.addEventListener("click", () => {
+      userInitiatedUpdate.current = true;
+      hideUpdateBanner();
+      setStatus(t("updateUpdating"));
+      void applyAppUpdate({
+        registration: pendingUpdate.registration,
+        remoteVersion: pendingUpdate.remoteVersion,
+      });
+    });
+  }
+  if (els.updateLaterBtn) {
+    els.updateLaterBtn.addEventListener("click", () => {
+      dismissUpdatePrompt(pendingUpdate.remoteVersion || "waiting");
+      hideUpdateBanner();
+    });
+  }
 
   void checkForAppUpdate({
     onStatus: (phase) => {
       if (phase === "checking") setStatus(t("updateChecking"));
-      else if (phase === "updating") setStatus(t("updateUpdating"));
     },
     onError: () => setStatus(t("updateFailed"), true),
-  }).then(({ updated }) => {
-    if (updated) return;
+    onAvailable: ({ remoteVersion, registration }) => {
+      showUpdateBanner(remoteVersion, registration);
+      const cur = els.status?.textContent || "";
+      if (cur === t("updateChecking")) {
+        setStatus("Ready — open a MIDI or MusicXML file to begin.");
+      }
+    },
+  }).then(({ available }) => {
     const just = consumeJustUpdatedLabel();
     if (just) {
       setStatus(t("updateApplied").replace("{version}", just));
       return;
     }
+    if (available) return;
     const cur = els.status?.textContent || "";
     if (cur === t("updateChecking") || cur === t("updateUpdating")) {
       setStatus("Ready — open a MIDI or MusicXML file to begin.");
@@ -1678,6 +1740,19 @@ onLangChange(() => {
   renderVoices();
   renderNotes();
   void updateSyncUi();
+  if (els.updateBanner && !els.updateBanner.hidden && els.updateBannerText) {
+    const pendingLabel = els.updateBannerText.textContent;
+    // Refresh banner copy if still showing a versioned update string.
+    if (pendingLabel) {
+      const m = pendingLabel.match(/v?\d+\.\d+\.\d+/);
+      if (m) {
+        els.updateBannerText.textContent = t("updateAvailable").replace(
+          "{version}",
+          formatVersionLabel(m[0]),
+        );
+      }
+    }
+  }
 });
 
 void loadSyncSettings().then((s) => {

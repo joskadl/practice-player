@@ -114,6 +114,10 @@ const STRINGS = {
     updateCurrent: "App is up to date",
     updateApplied: "Updated to {version}",
     updateFailed: "Could not check for updates (offline?)",
+    updateAvailable: "Update available: {version}",
+    updateAvailableGeneric: "A new version of the app is available.",
+    updateNow: "Update now",
+    updateLater: "Later",
   },
   nl: {
     title: "MIDI Oefenspeler",
@@ -225,6 +229,10 @@ const STRINGS = {
     updateCurrent: "App is up-to-date",
     updateApplied: "Bijgewerkt naar {version}",
     updateFailed: "Kon niet controleren op updates (offline?)",
+    updateAvailable: "Update beschikbaar: {version}",
+    updateAvailableGeneric: "Er is een nieuwe versie van de app beschikbaar.",
+    updateNow: "Nu updaten",
+    updateLater: "Later",
   },
 };
 

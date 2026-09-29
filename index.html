@@ -12,6 +12,13 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="updateBanner" class="update-banner" hidden role="status" aria-live="polite">
+    <span id="updateBannerText" class="update-banner-text"></span>
+    <div class="update-banner-actions">
+      <button type="button" id="updateNowBtn" class="update-now-btn" data-i18n="updateNow">Update now</button>
+      <button type="button" id="updateLaterBtn" class="secondary update-later-btn" data-i18n="updateLater">Later</button>
+    </div>
+  </div>
   <button type="button" id="langToggle" class="lang-toggle" aria-pressed="true" data-i18n-title="langToggleTip">EN</button>
 
   <main class="app">

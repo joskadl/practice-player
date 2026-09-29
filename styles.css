@@ -91,6 +91,54 @@ body {
   justify-content: flex-end;
 }
 
+.update-banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  padding: 0.7rem 1.1rem;
+  background: var(--accent, #2f5d50);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+.update-banner[hidden] {
+  display: none !important;
+}
+
+.update-banner-text {
+  flex: 1 1 12rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.update-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.update-now-btn {
+  background: #fff;
+  color: var(--accent, #2f5d50);
+  border: none;
+  font-weight: 600;
+}
+
+.update-later-btn {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.update-later-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .sync-panel .sync-status {
   text-align: left;
   max-width: none;

@@ -6,7 +6,7 @@
  * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v30";
+const CACHE = "midi-practice-player-v31";
 
 const PRECACHE = [
   "./",
@@ -62,12 +62,9 @@ function isNetworkFirst(url) {
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting()),
-  );
+  // Precache the new build, but stay in "waiting" until the page sends
+  // SKIP_WAITING (Update now / first install). Avoids silent half-updates.
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
 });
 
 self.addEventListener("activate", (event) => {
