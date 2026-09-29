@@ -5,7 +5,7 @@
  * deploys without a hard refresh. Heavy/static assets stay cache-first.
  */
 
-const CACHE = "midi-practice-player-v24";
+const CACHE = "midi-practice-player-v26";
 
 const PRECACHE = [
   "./",

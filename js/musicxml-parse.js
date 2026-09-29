@@ -42,6 +42,43 @@ function pitchToMidi(noteEl) {
   return (octave + 1) * 12 + pc + Math.round(alter);
 }
 
+/** Sounding MIDI offset from a MusicXML ``<transpose>`` (written → concert). */
+function transposeChromatic(transposeEl) {
+  if (!transposeEl) return 0;
+  const chromatic = num(transposeEl, "chromatic", 0);
+  const octaveChange = num(transposeEl, "octave-change", 0);
+  return Math.round(chromatic) + Math.round(octaveChange) * 12;
+}
+
+/**
+ * Update per-staff sounding offsets from ``attributes/transpose``.
+ * A bare ``<transpose>`` (no number) applies to every staff.
+ * @param {Element} attrsEl
+ * @param {Map<string, number>} offsetsByStaff
+ */
+function applyAttributeTransposes(attrsEl, offsetsByStaff) {
+  const els = attrsEl.getElementsByTagName("transpose");
+  if (!els.length) return;
+  /** @type {number|null} */
+  let globalOffset = null;
+  for (let i = 0; i < els.length; i++) {
+    const tr = els[i];
+    const staff = tr.getAttribute("number");
+    const offset = transposeChromatic(tr);
+    if (staff) offsetsByStaff.set(String(staff), offset);
+    else globalOffset = offset;
+  }
+  if (globalOffset != null) {
+    // Replace all known staff offsets; staff "1" is the default for unnumbered notes.
+    if (offsetsByStaff.size === 0) {
+      offsetsByStaff.set("1", globalOffset);
+    } else {
+      for (const key of [...offsetsByStaff.keys()]) offsetsByStaff.set(key, globalOffset);
+    }
+    offsetsByStaff.set("1", globalOffset);
+  }
+}
+
 /**
  * @param {string} xmlText
  * @returns {object} same general shape as parseMidi() for transport/roll
@@ -93,7 +130,9 @@ export function parseMusicXml(xmlText) {
     let divisions = 480;
     let beats = 4;
     let beatType = 4;
-    let openTies = new Map(); // midi -> {start, velocity, noteId, midi}
+    /** Written→concert semitone offset per staff number (MusicXML transpose). */
+    const transposeByStaff = new Map([["1", 0]]);
+    let openTies = new Map(); // sounding midi -> {start, velocity, noteId, midi}
 
     const measures = partEl.getElementsByTagName("measure");
     for (let mi = 0; mi < measures.length; mi++) {
@@ -118,6 +157,7 @@ export function parseMusicXml(xmlText) {
             if (b > 0) beats = b;
             if (bt > 0) beatType = bt;
           }
+          applyAttributeTransposes(el, transposeByStaff);
           continue;
         }
 
@@ -162,11 +202,15 @@ export function parseMusicXml(xmlText) {
 
         if (isGrace) continue;
 
-        const midi = pitchToMidi(el);
-        if (midi == null) {
+        const writtenMidi = pitchToMidi(el);
+        if (writtenMidi == null) {
           if (!isChord) cursor += dur;
           continue;
         }
+        const staff = text(el, "staff") || "1";
+        const soundingOffset =
+          transposeByStaff.get(staff) ?? transposeByStaff.get("1") ?? 0;
+        const midi = writtenMidi + soundingOffset;
 
         const tieEls = el.getElementsByTagName("tie");
         let tieStart = false;
