@@ -44,6 +44,8 @@ function scrubXml(xmlText) {
   if (!DOMParser || !XMLSerializer) {
     // Lightweight tag scrub without a full XML DOM dependency.
     let out = xmlText.replace(/<creator\b[^>]*>[\s\S]*?<\/creator>/gi, "");
+    out = out.replace(/<rights\b[^>]*>[\s\S]*?<\/rights>/gi, "");
+    out = out.replace(/<source\b[^>]*>[\s\S]*?<\/source>/gi, "");
     out = out.replace(/<credit\b[^>]*>[\s\S]*?<\/credit>/gi, (block) => {
       const typeMatch = block.match(/<credit-type[^>]*>\s*([^<]+)\s*<\/credit-type>/i);
       const type = typeMatch?.[1]?.trim().toLowerCase() || "";
@@ -57,7 +59,9 @@ function scrubXml(xmlText) {
   const root = doc.documentElement;
   const identification = firstChild(root, "identification");
   if (identification) {
-    for (const el of [...childrenByName(identification, "creator")]) el.remove();
+    for (const name of ["creator", "rights", "source"]) {
+      for (const el of [...childrenByName(identification, name)]) el.remove();
+    }
   }
   for (const credit of [...childrenByName(root, "credit")]) {
     const type = firstChild(credit, "credit-type")?.textContent?.trim().toLowerCase();

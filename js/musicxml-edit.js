@@ -529,7 +529,9 @@ export function stripPersonalNames(xmlText) {
   const root = doc.documentElement;
   const identification = firstChild(root, "identification");
   if (identification) {
-    for (const el of [...childrenByName(identification, "creator")]) el.remove();
+    for (const name of ["creator", "rights", "source"]) {
+      for (const el of [...childrenByName(identification, name)]) el.remove();
+    }
   }
   for (const credit of [...childrenByName(root, "credit")]) {
     const type = firstChild(credit, "credit-type")?.textContent?.trim().toLowerCase();
