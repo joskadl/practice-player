@@ -43,6 +43,7 @@ function shortAbbr(name) {
 
 const VOICE_COLORS_FIELD = "practice-player-voice-colors";
 const RECORDING_URL_FIELD = "practice-player-recording-url";
+const REMARKS_FIELD = "practice-player-remarks";
 
 const STEP_TO_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 const PC_SHARP = [
@@ -506,6 +507,41 @@ export function writeRecordingUrl(xmlText, url) {
   return serializeDoc(doc);
 }
 
+/**
+ * @param {string} xmlText
+ * @returns {string}
+ */
+export function readRemarks(xmlText) {
+  try {
+    const doc = parseDoc(xmlText);
+    return readMiscField(doc.documentElement, REMARKS_FIELD) || "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * @param {string} xmlText
+ * @param {string} remarks
+ * @returns {string}
+ */
+export function writeRemarks(xmlText, remarks) {
+  const doc = parseDoc(xmlText);
+  const value = String(remarks ?? "");
+  if (!value.trim()) {
+    const identification = firstChild(doc.documentElement, "identification");
+    const misc = identification ? firstChild(identification, "miscellaneous") : null;
+    if (misc) {
+      for (const field of [...childrenByName(misc, "miscellaneous-field")]) {
+        if (field.getAttribute("name") === REMARKS_FIELD) field.remove();
+      }
+    }
+  } else {
+    writeMiscField(doc.documentElement, doc, REMARKS_FIELD, value);
+  }
+  return serializeDoc(doc);
+}
+
 /** Credit types that usually name people (not the piece title). */
 const PERSONAL_CREDIT_TYPES = new Set([
   "composer",
@@ -559,4 +595,4 @@ export function downloadMusicXml(xmlText, fileName = "score.musicxml") {
   URL.revokeObjectURL(url);
 }
 
-export { RECORDING_URL_FIELD };
+export { RECORDING_URL_FIELD, REMARKS_FIELD };

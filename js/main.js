@@ -14,6 +14,8 @@ import {
   readRecordingUrl,
   writeRecordingUrl,
   stripPersonalNames,
+  readRemarks,
+  writeRemarks,
 } from "./musicxml-edit.js";
 import { ChoirSynth } from "./synth.js";
 import { Transport } from "./transport.js";
@@ -68,6 +70,8 @@ const els = {
   unmuteAllBtn: document.getElementById("unmuteAllBtn"),
   pianoRoll: document.getElementById("pianoRoll"),
   sheetMusic: document.getElementById("sheetMusic"),
+  remarksRow: document.getElementById("remarksRow"),
+  remarksInput: document.getElementById("remarksInput"),
   viewRollBtn: document.getElementById("viewRollBtn"),
   viewSheetBtn: document.getElementById("viewSheetBtn"),
   sheetZoomControls: document.getElementById("sheetZoomControls"),
@@ -180,11 +184,7 @@ function snapshotIntoPack(pack) {
   pack.edits = edits;
   pack.title = edits.title || pack.title || sourceFileName || "";
   pack.sourceFileName = sourceFileName || pack.sourceFileName || "";
-  pack.musicXml = project?.musicXml
-    ? sheet.dirty
-      ? sheet.buildEditedXml()
-      : project.musicXml
-    : pack.musicXml || "";
+  pack.musicXml = project?.musicXml ? currentMusicXml() : pack.musicXml || "";
   pack.notes = Array.isArray(pack.notes) ? pack.notes : [];
 }
 
@@ -192,11 +192,7 @@ async function persistSessionSnapshot() {
   if (!session.hasPack() || !project) return;
   try {
     await session.autosaveFields({
-      musicXml: project.musicXml
-        ? sheet.dirty
-          ? sheet.buildEditedXml()
-          : project.musicXml
-        : "",
+      musicXml: project.musicXml ? currentMusicXml() : "",
       edits: collectCurrentEdits(),
       title: collectCurrentEdits().title || sourceFileName,
       sourceFileName,
@@ -475,10 +471,23 @@ function updateSheetToolbar() {
 function currentMusicXml() {
   if (!project?.musicXml) return "";
   try {
-    return sheet.dirty ? sheet.buildEditedXml() : project.musicXml;
+    const base = sheet.dirty ? sheet.buildEditedXml() : project.musicXml;
+    return writeRemarks(base, els.remarksInput?.value || "");
   } catch {
     return project.musicXml;
   }
+}
+
+function updateRemarksUi(xmlText) {
+  const hasScore = !!project?.musicXml;
+  if (els.remarksRow) els.remarksRow.hidden = !hasScore;
+  if (!els.remarksInput) return;
+  if (!hasScore) {
+    els.remarksInput.value = "";
+    return;
+  }
+  const xml = xmlText || project.musicXml || "";
+  els.remarksInput.value = xml ? readRemarks(xml) : "";
 }
 
 function hostLabel(url) {
@@ -567,6 +576,7 @@ async function applyMutatedMusicXml(xml, opts = {}) {
   renderVoices();
   updateSheetToolbar();
   updateRecordingUi(xml);
+  updateRemarksUi(xml);
   syncAnnotBar(sheet.getLayers());
   if (opts.label) void recordSharedEdit(opts.label);
 }
@@ -643,7 +653,7 @@ function exportBaseName() {
 async function saveSheetEdits() {
   if (!project?.musicXml || !sheet.dirty) return;
   try {
-    const nextXml = sheet.buildEditedXml();
+    const nextXml = writeRemarks(sheet.buildEditedXml(), els.remarksInput?.value || "");
     downloadMusicXml(nextXml, exportBaseName());
     project.musicXml = nextXml;
     const meta = readMusicXmlMeta(nextXml);
@@ -663,6 +673,7 @@ async function saveSheetEdits() {
     });
     renderVoices();
     updateSheetToolbar();
+    updateRemarksUi(nextXml);
     setStatus(`Saved ${exportBaseName()}`);
   } catch (err) {
     setStatus(err?.message || String(err), true);
@@ -986,6 +997,7 @@ async function applyProject(parsed, fileName, opts = {}) {
   setLoadedUi(true);
   updateTuningUi();
   updateRecordingUi(parsed.musicXml || "");
+  updateRemarksUi(parsed.musicXml || "");
 
   if (parsed.musicXml) {
     setStatus("Rendering sheet music…");
@@ -1024,6 +1036,7 @@ async function applyProject(parsed, fileName, opts = {}) {
       '<p class="hint sheet-placeholder">' + t("sheetPlaceholder") + "</p>";
     scoreView = "roll";
     updateRecordingUi("");
+    updateRemarksUi("");
   }
 
   renderVoices();
@@ -1091,6 +1104,7 @@ async function loadFile(file) {
     setLoadedUi(false);
     updateTuningUi();
     updateRecordingUi("");
+    updateRemarksUi("");
     renderVoices();
     updateScoreViewUi();
     setStatus(err?.message || String(err), true);
@@ -1180,6 +1194,7 @@ async function loadExample(ex) {
     setLoadedUi(false);
     updateTuningUi();
     updateRecordingUi("");
+    updateRemarksUi("");
     renderVoices();
     updateScoreViewUi();
     setStatus(err?.message || String(err), true);
@@ -1250,6 +1265,12 @@ els.sheetPdfBtn?.addEventListener("click", async () => {
 
 els.sheetSaveBtn?.addEventListener("click", () => {
   void saveSheetEdits();
+});
+
+els.remarksInput?.addEventListener("input", () => {
+  if (!project?.musicXml) return;
+  sheet.markDirty();
+  updateSheetToolbar();
 });
 
 els.transposeDownBtn?.addEventListener("click", () => {
