@@ -12,6 +12,8 @@ import {
   writeAnnotationLayers,
   insertHarmonyAtTick,
   insertDirectionWordsAtTick,
+  updateAnnotationAtTick,
+  removeAnnotationAtTick,
 } from "./musicxml-annotate.js";
 import { exportSheetViewPdf } from "./sheet-pdf-export.js";
 
@@ -924,7 +926,7 @@ export class SheetView {
   }
 
   /**
-   * Click seeks (annotations are started from the + Chord / + Note buttons).
+   * Click seeks, or opens edit for an existing chord / performance note.
    */
   _onContainerClick(ev) {
     if (!this._ready) return;
@@ -934,10 +936,46 @@ export class SheetView {
     if (t?.closest?.("[data-pp-edit]")) return;
     if (t?.closest?.("img.osmd-cursor") || t?.classList?.contains?.("cursor")) return;
 
+    const annotEl = t?.closest?.(".pp-chord, .pp-annot-note");
+    if (annotEl) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      void this._beginAnnotationEdit(annotEl, ev);
+      return;
+    }
+
     const hit = this._nearestOnsetAtClient(ev.clientX, ev.clientY);
     if (!hit) return;
     ev.preventDefault();
     if (typeof this.onSeek === "function") this.onSeek(hit.tick);
+  }
+
+  /**
+   * @param {Element} annotEl
+   * @param {MouseEvent} ev
+   */
+  async _beginAnnotationEdit(annotEl, ev) {
+    if (!this.xml) return;
+    this._cancelAnnotInput();
+
+    const kind =
+      annotEl.classList.contains("pp-annot-note") || annotEl.closest(".pp-annot-note")
+        ? "note"
+        : "chord";
+    const textHost = annotEl.closest("text") || (annotEl.tagName?.toLowerCase() === "text" ? annotEl : annotEl);
+    const originalText = String(textHost?.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!originalText) return;
+
+    const hit = this._nearestOnsetAtClient(ev.clientX, ev.clientY);
+    const tick = hit?.tick ?? (this._lastPlayheadTick | 0);
+    this.setAnnotMode(kind);
+    if (typeof this.onSeek === "function") this.onSeek(tick);
+    this.setPlayhead(tick, { scroll: true });
+    await nextFrame();
+    await nextFrame();
+    this._openAnnotInput(kind, tick, { mode: "edit", originalText });
   }
 
   /**
@@ -983,10 +1021,14 @@ export class SheetView {
   /**
    * @param {"chord"|"note"} kind
    * @param {number} tick
+   * @param {{mode?: "add"|"edit", originalText?: string}} [opts]
    */
-  _openAnnotInput(kind, tick) {
+  _openAnnotInput(kind, tick, opts = {}) {
     this._cancelInlineEdit();
     if (this._annotInput) this._annotInput.remove();
+
+    const mode = opts.mode === "edit" ? "edit" : "add";
+    const originalText = String(opts.originalText || "").trim();
 
     const cs = getComputedStyle(this.container);
     if (cs.position === "static") this.container.style.position = "relative";
@@ -994,13 +1036,23 @@ export class SheetView {
     const input = document.createElement("input");
     input.type = "text";
     input.className = "sheet-annot-input";
-    input.placeholder =
-      kind === "chord" ? "Chord (e.g. Am, G7)" : "Performance note";
-    input.setAttribute(
-      "aria-label",
-      kind === "chord" ? "Chord symbol at cursor" : "Performance note at cursor",
-    );
-    input.value = kind === "chord" ? "" : "";
+    if (mode === "edit") {
+      input.placeholder =
+        kind === "chord" ? "Edit chord (empty deletes)" : "Edit note (empty deletes)";
+      input.setAttribute(
+        "aria-label",
+        kind === "chord" ? "Edit chord symbol" : "Edit performance note",
+      );
+      input.value = originalText;
+    } else {
+      input.placeholder =
+        kind === "chord" ? "Chord (e.g. Am, G7)" : "Performance note";
+      input.setAttribute(
+        "aria-label",
+        kind === "chord" ? "Chord symbol at cursor" : "Performance note at cursor",
+      );
+      input.value = "";
+    }
 
     const host = this.container.getBoundingClientRect();
     const cursorEl = this.osmd?.cursor?.cursorElement;
@@ -1015,7 +1067,7 @@ export class SheetView {
     input.style.top = `${Math.max(0, top)}px`;
 
     this._annotInput = input;
-    this._annotCtx = { kind, tick };
+    this._annotCtx = { kind, tick, mode, originalText };
     this.container.appendChild(input);
     input.focus();
     input.select();
@@ -1030,7 +1082,12 @@ export class SheetView {
       this._annotCtx = null;
       input.remove();
       this.setAnnotMode(null);
-      if (!commit || !text || !ctx) return;
+      if (!commit || !ctx) return;
+      if (ctx.mode === "edit") {
+        void this._commitAnnotationEdit(ctx, text);
+        return;
+      }
+      if (!text) return;
       void this._commitAnnotationAtTick(ctx.kind, ctx.tick, text);
     };
     input.addEventListener("keydown", (ev) => {
@@ -1040,6 +1097,14 @@ export class SheetView {
       } else if (ev.key === "Escape") {
         ev.preventDefault();
         finish(false);
+      } else if (
+        (ev.key === "Delete" || ev.key === "Backspace") &&
+        mode === "edit" &&
+        !input.value
+      ) {
+        // Already empty: Delete/Backspace confirms removal.
+        ev.preventDefault();
+        finish(true);
       }
     });
     input.addEventListener("blur", () => finish(true));
@@ -1370,6 +1435,20 @@ export class SheetView {
         el.closest("g")?.classList.add("pp-chord");
       }
     }
+
+    for (const el of svg.querySelectorAll(".pp-chord, .pp-annot-note")) {
+      if (el instanceof SVGElement || el instanceof HTMLElement) {
+        el.style.cursor = "pointer";
+        if (!el.getAttribute("title")) {
+          el.setAttribute(
+            "title",
+            el.classList.contains("pp-annot-note") || el.closest?.(".pp-annot-note")
+              ? "Click to edit or delete note"
+              : "Click to edit or delete chord",
+          );
+        }
+      }
+    }
   }
 
   /**
@@ -1415,6 +1494,48 @@ export class SheetView {
     if (typeof this.onSeek === "function") this.onSeek(onset);
     if (typeof this.onXmlMutated === "function") {
       await this.onXmlMutated(nextXml, kind === "chord" ? `Chord ${value}` : `Note: ${value}`);
+    }
+  }
+
+  /**
+   * @param {{kind:"chord"|"note", tick:number, originalText:string}} ctx
+   * @param {string} text
+   */
+  async _commitAnnotationEdit(ctx, text) {
+    const value = String(text || "").trim();
+    const original = String(ctx.originalText || "").trim();
+    if (!original) return;
+    if (value === original) return;
+
+    let baseXml = this.dirty ? this.buildEditedXml() : this.xml;
+    if (!baseXml) return;
+    if (!this.dirty) baseXml = writeAnnotationLayers(baseXml, this.layers);
+
+    const onset = this._onsetTicks.length ? this._activeOnsetTick(ctx.tick) : ctx.tick | 0;
+    let nextXml;
+    let label;
+    try {
+      if (!value) {
+        nextXml = removeAnnotationAtTick(baseXml, onset, ctx.kind, original);
+        label =
+          ctx.kind === "chord" ? `Delete chord ${original}` : `Delete note: ${original}`;
+      } else {
+        nextXml = updateAnnotationAtTick(baseXml, onset, ctx.kind, original, value);
+        label =
+          ctx.kind === "chord"
+            ? `Chord ${original} → ${value}`
+            : `Note: ${original} → ${value}`;
+      }
+      nextXml = writeAnnotationLayers(nextXml, this.layers);
+    } catch (err) {
+      console.warn(err);
+      return;
+    }
+
+    this._setDirty(true);
+    if (typeof this.onSeek === "function") this.onSeek(onset);
+    if (typeof this.onXmlMutated === "function") {
+      await this.onXmlMutated(nextXml, label);
     }
   }
 

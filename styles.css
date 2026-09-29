@@ -650,6 +650,11 @@ select {
   box-shadow: 0 2px 10px rgba(28, 26, 23, 0.15);
 }
 
+.sheet-music .pp-chord,
+.sheet-music .pp-annot-note {
+  cursor: pointer;
+}
+
 .tuning-panel {
   display: flex;
   flex-wrap: wrap;
