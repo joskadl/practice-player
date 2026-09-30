@@ -41,6 +41,13 @@
       "file": "entre-le-boeuf-et-lane-gris.musicxml",
       "format": "musicxml",
       "description": "SATB choir (arr. Felix de Nobel)"
+    },
+    {
+      "id": "gabriels-message-satb",
+      "title": "Gabriel's Message",
+      "file": "gabriels-message-satb.musicxml",
+      "format": "musicxml",
+      "description": "SATB choir"
     }
   ]
 }

@@ -28,6 +28,7 @@ TITLES = {
     "gaudete-christus-est-natus.musicxml": "Gaudete, Christus est natus",
     "gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.musicxml": "Gloria in excelsis Deo",
     "please-come-home-for-christmas.musicxml": "Please Come Home for Christmas",
+    "gabriels-message-satb.musicxml": "Gabriel's Message",
 }
 
 
