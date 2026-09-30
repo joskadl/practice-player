@@ -90,7 +90,6 @@ const els = {
   sheetPdfBtn: document.getElementById("sheetPdfBtn"),
   sheetFullscreenBtn: document.getElementById("sheetFullscreenBtn"),
   sheetStage: document.getElementById("sheetStage"),
-  sheetFsExitBtn: document.getElementById("sheetFsExitBtn"),
   sheetFsPlayBtn: document.getElementById("sheetFsPlayBtn"),
   sheetFsPauseBtn: document.getElementById("sheetFsPauseBtn"),
   sheetFsStopBtn: document.getElementById("sheetFsStopBtn"),
@@ -1383,9 +1382,6 @@ els.sheetZoomInBtn?.addEventListener("click", async () => {
 
 els.sheetFullscreenBtn?.addEventListener("click", () => {
   void toggleSheetFullscreen();
-});
-els.sheetFsExitBtn?.addEventListener("click", () => {
-  void exitSheetFullscreen();
 });
 els.sheetFsPlayBtn?.addEventListener("click", () => els.playBtn?.click());
 els.sheetFsPauseBtn?.addEventListener("click", () => els.pauseBtn?.click());

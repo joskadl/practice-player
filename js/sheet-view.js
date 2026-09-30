@@ -18,7 +18,6 @@ import {
 import { exportSheetViewPdf } from "./sheet-pdf-export.js";
 
 const MUTED_COLOR = "#b0b0b0";
-const WIDTH_FALLBACK = 640;
 const ZOOM_MIN = 0.35;
 const ZOOM_MAX = 2.25;
 const ZOOM_DEFAULT = 0.55;
@@ -351,10 +350,8 @@ export class SheetView {
       await nextFrame();
       if (this.container.clientWidth > 32) return this.container.clientWidth;
     }
-    const parentW = this.container.parentElement?.clientWidth || 800;
-    this.container.style.minWidth = `${Math.max(320, parentW)}px`;
-    await nextFrame();
-    return this.container.clientWidth;
+    const parentW = this.container.parentElement?.clientWidth || 0;
+    return Math.max(280, parentW || this.container.clientWidth || 480);
   }
 
   _applyCursorStyle() {
@@ -389,8 +386,10 @@ export class SheetView {
         autoResize: true,
         pageFormat: "Endless",
       });
+      // Match the panel width (same as siblings above/below). Do not force a
+      // wide fallback that overflows narrow viewports.
       if (this.osmd.EngravingRules && width > 0) {
-        this.osmd.EngravingRules.PageWidth = Math.max(WIDTH_FALLBACK, width - 24);
+        this.osmd.EngravingRules.PageWidth = Math.max(200, width - 24);
       }
     } catch {
       /* ignore */

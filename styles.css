@@ -788,6 +788,42 @@ select {
   padding: 0.5rem;
 }
 
+.sheet-music-frame {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.sheet-expand-btn {
+  position: absolute;
+  right: 0.65rem;
+  bottom: 0.65rem;
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 252, 247, 0.94);
+  color: var(--muted);
+  box-shadow: 0 1px 4px rgba(28, 26, 23, 0.12);
+  cursor: pointer;
+}
+
+.sheet-expand-btn:hover,
+.sheet-expand-btn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.sheet-expand-btn .sheet-fs-icon {
+  display: block;
+}
+
 .sheet-stage {
   display: flex;
   flex-direction: column;
@@ -824,18 +860,6 @@ select {
   font-size: 0.8rem;
 }
 
-.sheet-fs-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.1rem;
-  padding: 0.28rem 0.45rem;
-}
-
-.sheet-fs-btn .sheet-fs-icon {
-  display: block;
-}
-
 .sheet-stage:fullscreen,
 .sheet-stage:-webkit-full-screen {
   box-sizing: border-box;
@@ -856,6 +880,14 @@ select {
   display: flex !important;
 }
 
+.sheet-stage:fullscreen .sheet-music-frame,
+.sheet-stage:-webkit-full-screen .sheet-music-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .sheet-stage:fullscreen .sheet-music,
 .sheet-stage:-webkit-full-screen .sheet-music {
   flex: 1 1 auto;
@@ -868,14 +900,6 @@ select {
 
 body.sheet-fullscreen-active .lang-toggle {
   display: none;
-}
-
-body.sheet-fullscreen-active .sheet-fs-btn .sheet-fs-icon-enter {
-  display: none;
-}
-
-body.sheet-fullscreen-active .sheet-fs-btn .sheet-fs-icon-exit {
-  display: block !important;
 }
 
 .remarks-row {
