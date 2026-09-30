@@ -877,7 +877,7 @@ select {
 
 .sheet-stage:fullscreen .sheet-annot-bar,
 .sheet-stage:-webkit-full-screen .sheet-annot-bar {
-  display: flex !important;
+  display: none !important;
 }
 
 .sheet-stage:fullscreen .sheet-music-frame,
