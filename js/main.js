@@ -88,6 +88,14 @@ const els = {
   sheetZoomInBtn: document.getElementById("sheetZoomInBtn"),
   sheetZoomLabel: document.getElementById("sheetZoomLabel"),
   sheetPdfBtn: document.getElementById("sheetPdfBtn"),
+  sheetFullscreenBtn: document.getElementById("sheetFullscreenBtn"),
+  sheetStage: document.getElementById("sheetStage"),
+  sheetFsExitBtn: document.getElementById("sheetFsExitBtn"),
+  sheetFsPlayBtn: document.getElementById("sheetFsPlayBtn"),
+  sheetFsPauseBtn: document.getElementById("sheetFsPauseBtn"),
+  sheetFsStopBtn: document.getElementById("sheetFsStopBtn"),
+  sheetFsZoomOutBtn: document.getElementById("sheetFsZoomOutBtn"),
+  sheetFsZoomInBtn: document.getElementById("sheetFsZoomInBtn"),
   transposeDownBtn: document.getElementById("transposeDownBtn"),
   transposeUpBtn: document.getElementById("transposeUpBtn"),
   sheetSaveBtn: document.getElementById("sheetSaveBtn"),
@@ -755,6 +763,7 @@ const transport = new Transport({
     const playing = transport.playing;
     els.playBtn.disabled = playing;
     els.pauseBtn.disabled = !playing;
+    syncFullscreenChrome();
   },
 });
 
@@ -799,9 +808,11 @@ function updateScoreViewUi() {
 
   const showSheet = scoreView === "sheet" && hasSheet;
   els.pianoRoll.hidden = showSheet;
-  els.sheetMusic.hidden = !showSheet;
+  if (els.sheetStage) els.sheetStage.hidden = !showSheet;
+  if (els.sheetMusic) els.sheetMusic.hidden = false;
   if (els.sheetZoomControls) els.sheetZoomControls.hidden = !showSheet;
   if (els.sheetAnnotBar) els.sheetAnnotBar.hidden = !showSheet;
+  if (els.sheetFullscreenBtn) els.sheetFullscreenBtn.disabled = !showSheet;
   els.viewRollBtn.setAttribute("aria-pressed", showSheet ? "false" : "true");
   els.viewSheetBtn.setAttribute("aria-pressed", showSheet ? "true" : "false");
   els.scoreHeading.textContent = showSheet ? t("sheetMusic") : t(hasSheet ? "pianoRoll" : "score");
@@ -809,8 +820,10 @@ function updateScoreViewUi() {
   if (scorePanel) scorePanel.title = t("scoreTip");
   updateSheetToolbar();
   if (showSheet) syncAnnotBar(sheet.getLayers?.());
+  syncFullscreenChrome();
 
   if (!showSheet) {
+    if (isSheetFullscreen()) void exitSheetFullscreen();
     roll.draw();
   } else if (sheet.hasScore()) {
     void sheet.revealAndRender().then(() => {
@@ -819,6 +832,81 @@ function updateScoreViewUi() {
     });
   }
   updateSheetZoomLabel();
+}
+
+function fullscreenElement() {
+  return (
+    document.fullscreenElement
+    || document.webkitFullscreenElement
+    || null
+  );
+}
+
+function isSheetFullscreen() {
+  const stage = els.sheetStage;
+  if (!stage) return false;
+  return fullscreenElement() === stage;
+}
+
+function syncFullscreenChrome() {
+  const active = isSheetFullscreen();
+  document.body.classList.toggle("sheet-fullscreen-active", active);
+  if (els.sheetFullscreenBtn) {
+    els.sheetFullscreenBtn.setAttribute("aria-pressed", active ? "true" : "false");
+    els.sheetFullscreenBtn.title = t(active ? "exitFullscreenTip" : "fullscreenTip");
+    els.sheetFullscreenBtn.setAttribute("aria-label", t(active ? "exitFullscreen" : "fullscreen"));
+    const enterIcon = els.sheetFullscreenBtn.querySelector(".sheet-fs-icon-enter");
+    const exitIcon = els.sheetFullscreenBtn.querySelector(".sheet-fs-icon-exit");
+    if (enterIcon) enterIcon.hidden = active;
+    if (exitIcon) exitIcon.hidden = !active;
+  }
+  if (els.sheetFsPlayBtn) els.sheetFsPlayBtn.disabled = !!els.playBtn?.disabled;
+  if (els.sheetFsPauseBtn) els.sheetFsPauseBtn.disabled = !!els.pauseBtn?.disabled;
+  if (els.sheetFsStopBtn) els.sheetFsStopBtn.disabled = !!els.stopBtn?.disabled;
+}
+
+async function enterSheetFullscreen() {
+  const stage = els.sheetStage;
+  if (!stage || stage.hidden) return;
+  try {
+    if (stage.requestFullscreen) await stage.requestFullscreen();
+    else if (stage.webkitRequestFullscreen) stage.webkitRequestFullscreen();
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  }
+}
+
+async function exitSheetFullscreen() {
+  if (!fullscreenElement()) {
+    syncFullscreenChrome();
+    return;
+  }
+  try {
+    if (document.exitFullscreen) await document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function toggleSheetFullscreen() {
+  if (isSheetFullscreen()) await exitSheetFullscreen();
+  else await enterSheetFullscreen();
+}
+
+async function onSheetFullscreenChange() {
+  syncFullscreenChrome();
+  if (!isSheetFullscreen() && scoreView !== "sheet") return;
+  if (!sheet.hasScore()) return;
+  // Let the browser finish layout before OSMD measures the new viewport.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  try {
+    await sheet.revealAndRender();
+    updateSheetZoomLabel();
+    syncSheetPlayhead(transport.playheadTick, { scroll: true });
+  } catch {
+    /* ignore */
+  }
 }
 
 function setScoreView(view) {
@@ -1017,6 +1105,7 @@ function setLoadedUi(enabled) {
   }
   els.pauseBtn.disabled = true;
   updateScoreViewUi();
+  syncFullscreenChrome();
 }
 
 async function applyProject(parsed, fileName, opts = {}) {
@@ -1290,6 +1379,41 @@ els.sheetZoomOutBtn?.addEventListener("click", async () => {
 els.sheetZoomInBtn?.addEventListener("click", async () => {
   await sheet.zoomBy(0.1);
   updateSheetZoomLabel();
+});
+
+els.sheetFullscreenBtn?.addEventListener("click", () => {
+  void toggleSheetFullscreen();
+});
+els.sheetFsExitBtn?.addEventListener("click", () => {
+  void exitSheetFullscreen();
+});
+els.sheetFsPlayBtn?.addEventListener("click", () => els.playBtn?.click());
+els.sheetFsPauseBtn?.addEventListener("click", () => els.pauseBtn?.click());
+els.sheetFsStopBtn?.addEventListener("click", () => els.stopBtn?.click());
+els.sheetFsZoomOutBtn?.addEventListener("click", async () => {
+  await sheet.zoomBy(-0.1);
+  updateSheetZoomLabel();
+});
+els.sheetFsZoomInBtn?.addEventListener("click", async () => {
+  await sheet.zoomBy(0.1);
+  updateSheetZoomLabel();
+});
+document.addEventListener("fullscreenchange", () => {
+  void onSheetFullscreenChange();
+});
+document.addEventListener("webkitfullscreenchange", () => {
+  void onSheetFullscreenChange();
+});
+
+// F toggles sheet fullscreen when not typing in a field (common media-viewer shortcut).
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "f" && ev.key !== "F") return;
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const tag = (ev.target?.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || ev.target?.isContentEditable) return;
+  if (scoreView !== "sheet" || !sheet.hasScore() || els.sheetStage?.hidden) return;
+  ev.preventDefault();
+  void toggleSheetFullscreen();
 });
 
 els.sheetPdfBtn?.addEventListener("click", async () => {

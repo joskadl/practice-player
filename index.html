@@ -98,6 +98,21 @@
           <button type="button" id="sheetPdfBtn" class="secondary sheet-pdf-btn" data-i18n-title="exportPdfTip" data-i18n-aria="exportPdf">
             PDF
           </button>
+          <button
+            type="button"
+            id="sheetFullscreenBtn"
+            class="secondary sheet-fs-btn"
+            data-i18n-title="fullscreenTip"
+            data-i18n-aria="fullscreen"
+            aria-pressed="false"
+          >
+            <svg class="sheet-fs-icon sheet-fs-icon-enter" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+            </svg>
+            <svg class="sheet-fs-icon sheet-fs-icon-exit" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" hidden>
+              <path fill="currentColor" d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+            </svg>
+          </button>
           <span class="sheet-transpose" role="group" data-i18n-aria="transpose">
             <button type="button" id="transposeDownBtn" class="secondary" data-i18n-title="transposeDownTip" data-i18n-aria="transposeDown">−</button>
             <button type="button" id="transposeUpBtn" class="secondary" data-i18n-title="transposeUpTip" data-i18n-aria="transposeUp">+</button>
@@ -109,16 +124,36 @@
           </button>
         </div>
       </div>
-      <div id="sheetAnnotBar" class="sheet-annot-bar" hidden>
-        <div class="annot-toggles" role="group" data-i18n-aria="layers">
-          <button type="button" id="layerStavesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="staves" data-i18n-title="stavesTip">Staves</button>
-          <button type="button" id="layerLyricsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="lyrics" data-i18n-title="lyricsTip">Lyrics</button>
-          <button type="button" id="layerChordsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="chords" data-i18n-title="chordsTip">Chords</button>
-          <button type="button" id="layerNotesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="notesLayer" data-i18n-title="notesLayerTip">Notes</button>
+      <div id="sheetStage" class="sheet-stage" hidden>
+        <div class="sheet-fs-chrome">
+          <button type="button" id="sheetFsExitBtn" class="secondary" data-i18n="exitFullscreen" data-i18n-title="exitFullscreenTip">
+            Exit fullscreen
+          </button>
+          <div class="sheet-fs-transport" role="group" data-i18n-aria="transport">
+            <button type="button" id="sheetFsPlayBtn" data-i18n="play">Play</button>
+            <button type="button" id="sheetFsPauseBtn" data-i18n="pause">Pause</button>
+            <button type="button" id="sheetFsStopBtn" data-i18n="stop">Stop</button>
+          </div>
+          <div class="sheet-fs-zoom" role="group" data-i18n-aria="zoom">
+            <button type="button" id="sheetFsZoomOutBtn" class="secondary" data-i18n-title="zoomOut" data-i18n-aria="zoomOut">−</button>
+            <button type="button" id="sheetFsZoomInBtn" class="secondary" data-i18n-title="zoomIn" data-i18n-aria="zoomIn">+</button>
+          </div>
+          <span class="sheet-fs-hint" data-i18n="fullscreenEscHint">Esc to exit</span>
         </div>
-        <div class="annot-add" role="group" data-i18n-aria="addAnnotations">
-          <button type="button" id="addChordBtn" class="secondary" data-i18n="addChord" data-i18n-title="addChordTip">+ Chord</button>
-          <button type="button" id="addNoteBtn" class="secondary" data-i18n="addNote" data-i18n-title="addNoteTip">+ Note</button>
+        <div id="sheetAnnotBar" class="sheet-annot-bar" hidden>
+          <div class="annot-toggles" role="group" data-i18n-aria="layers">
+            <button type="button" id="layerStavesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="staves" data-i18n-title="stavesTip">Staves</button>
+            <button type="button" id="layerLyricsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="lyrics" data-i18n-title="lyricsTip">Lyrics</button>
+            <button type="button" id="layerChordsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="chords" data-i18n-title="chordsTip">Chords</button>
+            <button type="button" id="layerNotesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="notesLayer" data-i18n-title="notesLayerTip">Notes</button>
+          </div>
+          <div class="annot-add" role="group" data-i18n-aria="addAnnotations">
+            <button type="button" id="addChordBtn" class="secondary" data-i18n="addChord" data-i18n-title="addChordTip">+ Chord</button>
+            <button type="button" id="addNoteBtn" class="secondary" data-i18n="addNote" data-i18n-title="addNoteTip">+ Note</button>
+          </div>
+        </div>
+        <div id="sheetMusic" class="sheet-music">
+          <p class="hint sheet-placeholder" data-i18n="sheetPlaceholder">Load a MusicXML file to see sheet music here.</p>
         </div>
       </div>
       <canvas
@@ -130,9 +165,6 @@
         role="slider"
         data-i18n-aria="rollAria"
       ></canvas>
-      <div id="sheetMusic" class="sheet-music" hidden>
-        <p class="hint sheet-placeholder" data-i18n="sheetPlaceholder">Load a MusicXML file to see sheet music here.</p>
-      </div>
       <div id="remarksRow" class="remarks-row" hidden>
         <label for="remarksInput" data-i18n="remarks">Remarks</label>
         <textarea

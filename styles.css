@@ -788,6 +788,96 @@ select {
   padding: 0.5rem;
 }
 
+.sheet-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.sheet-fs-chrome {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.sheet-fs-transport {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.sheet-fs-zoom {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.sheet-fs-hint {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sheet-fs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.1rem;
+  padding: 0.28rem 0.45rem;
+}
+
+.sheet-fs-btn .sheet-fs-icon {
+  display: block;
+}
+
+.sheet-stage:fullscreen,
+.sheet-stage:-webkit-full-screen {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0.75rem 1rem 1rem;
+  background: #f7f7f5;
+  overflow: hidden;
+}
+
+.sheet-stage:fullscreen .sheet-fs-chrome,
+.sheet-stage:-webkit-full-screen .sheet-fs-chrome {
+  display: flex;
+}
+
+.sheet-stage:fullscreen .sheet-annot-bar,
+.sheet-stage:-webkit-full-screen .sheet-annot-bar {
+  display: flex !important;
+}
+
+.sheet-stage:fullscreen .sheet-music,
+.sheet-stage:-webkit-full-screen .sheet-music {
+  flex: 1 1 auto;
+  max-height: none;
+  height: 100%;
+  min-height: 0;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(28, 26, 23, 0.08);
+}
+
+body.sheet-fullscreen-active .lang-toggle {
+  display: none;
+}
+
+body.sheet-fullscreen-active .sheet-fs-btn .sheet-fs-icon-enter {
+  display: none;
+}
+
+body.sheet-fullscreen-active .sheet-fs-btn .sheet-fs-icon-exit {
+  display: block !important;
+}
+
 .remarks-row {
   display: flex;
   flex-direction: column;

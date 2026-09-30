@@ -1,21 +1,26 @@
-/** Channel colours (same idea as JustPlay Retune). */
+/**
+ * Default voice / channel colours.
+ * Tuned for white sheet noteheads and the dark piano roll: saturated mid-tones,
+ * no pale yellows or pastels that wash out on #fff. Colour picker still overrides.
+ * First four suit SATB (blue / rose / teal / violet).
+ */
 export const CHANNEL_COLORS = [
-  "#5b8def",
-  "#e07a5f",
-  "#81b29a",
-  "#f2cc8f",
-  "#9b5de5",
-  "#00bbf9",
-  "#f15bb5",
-  "#fee440",
-  "#00f5d4",
-  "#9b2226",
-  "#457b9d",
-  "#e9c46a",
-  "#2a9d8f",
-  "#e76f51",
-  "#264653",
-  "#a8dadc",
+  "#2563eb", // blue
+  "#e11d48", // rose
+  "#0f766e", // teal
+  "#7c3aed", // violet
+  "#c2410c", // rust
+  "#0369a1", // sky
+  "#a21caf", // magenta
+  "#15803d", // green
+  "#4338ca", // indigo
+  "#ea580c", // orange
+  "#0e7490", // cyan
+  "#be185d", // pink
+  "#4d7c0f", // olive
+  "#b45309", // amber
+  "#334155", // slate
+  "#b91c1c", // crimson
 ];
 
 export function channelColor(channel) {
