@@ -27,6 +27,17 @@ function firstChild(parent, name) {
   return childrenByName(parent, name)[0] || null;
 }
 
+/** Keep in sync with musicxml-parse.js — implicit pickups advance by content. */
+function measureAdvanceTicks(measure, measureStart, cursor, divisions, beats, beatType) {
+  const written = Math.max(1, Math.round(divisions * beats * (4 / beatType)));
+  const content = Math.max(0, cursor - measureStart);
+  const implicit =
+    measure?.getAttribute?.("implicit") === "yes"
+    || measure?.getAttributeNS?.(null, "implicit") === "yes";
+  if (implicit) return Math.max(1, content || written);
+  return written;
+}
+
 function ensureChild(parent, name, doc) {
   let el = firstChild(parent, name);
   if (el) return el;
@@ -171,7 +182,7 @@ function locateInsertPoint(doc, tick, partId) {
   const measures = childrenByName(partEl, "measure");
 
   // Mirror musicxml-parse.js measure timeline so playhead ticks match note onsets
-  // (including pickup / incomplete measures that pad to the written time signature).
+  // (implicit pickups advance by content length, matching OSMD musical time).
   for (const measure of measures) {
     const measureStart = absTick;
     let cursor = measureStart;
@@ -214,8 +225,14 @@ function locateInsertPoint(doc, tick, partId) {
       }
       if (!isChord) cursor += dur;
     }
-    const measureLen = Math.max(1, Math.round(divisions * beats * (4 / beatType)));
-    absTick = measureStart + measureLen;
+    absTick = measureStart + measureAdvanceTicks(
+      measure,
+      measureStart,
+      cursor,
+      divisions,
+      beats,
+      beatType,
+    );
   }
 
   if (!candidates.length) {
@@ -371,8 +388,14 @@ function listAnnotations(doc, partId) {
       const dur = isGrace ? 0 : Number(firstChild(el, "duration")?.textContent || 0);
       if (!isChord) cursor += dur;
     }
-    const measureLen = Math.max(1, Math.round(divisions * beats * (4 / beatType)));
-    absTick = measureStart + measureLen;
+    absTick = measureStart + measureAdvanceTicks(
+      measure,
+      measureStart,
+      cursor,
+      divisions,
+      beats,
+      beatType,
+    );
   }
   return out;
 }

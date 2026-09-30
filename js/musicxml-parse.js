@@ -19,6 +19,21 @@ function channelForPartIndex(index) {
   return Math.min(15, ch);
 }
 
+/**
+ * Advance the absolute tick cursor after a measure.
+ * Implicit pickups must advance by content length (OSMD musical time), not the
+ * written time-signature length — otherwise audio pauses and the sheet desyncs.
+ */
+function measureAdvanceTicks(measure, measureStart, cursor, divisions, beats, beatType) {
+  const written = Math.max(1, Math.round(divisions * beats * (4 / beatType)));
+  const content = Math.max(0, cursor - measureStart);
+  const implicit =
+    measure?.getAttribute?.("implicit") === "yes"
+    || measure?.getAttributeNS?.(null, "implicit") === "yes";
+  if (implicit) return Math.max(1, content || written);
+  return written;
+}
+
 function text(el, name) {
   const child = el?.getElementsByTagName(name)?.[0];
   return child?.textContent?.trim() ?? "";
@@ -272,7 +287,14 @@ export function parseMusicXml(xmlText) {
         if (!isChord) cursor += dur;
       }
 
-      const measureLen = Math.max(1, Math.round(divisions * beats * (4 / beatType)));
+      const measureLen = measureAdvanceTicks(
+        measure,
+        measureStart,
+        cursor,
+        divisions,
+        beats,
+        beatType,
+      );
       absTick = measureStart + measureLen;
       durationTicks = Math.max(durationTicks, absTick);
     }

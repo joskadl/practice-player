@@ -360,12 +360,13 @@ export class SheetView {
   _applyCursorStyle() {
     if (!this.osmd) return;
     try {
-      // type 1 = thin vertical bar (playhead); color is baked into the cursor image
+      // Match JustPlay / OSMD default: green Standard highlight over noteheads.
+      // Geometry (staff-line height, notehead X) is refined in _nudgeCursorToNoteheads.
       this.osmd.cursorsOptions = [
         {
-          type: 1,
-          color: "#e63946",
-          alpha: 0.75,
+          type: 0,
+          color: "#33e02f",
+          alpha: 0.5,
           follow: false,
         },
       ];
@@ -1151,7 +1152,40 @@ export class SheetView {
     }
     if (minLeft == null) return null;
 
-    // Preferred: OSMD system staff lines (includes bass even when DOM matching slips).
+    // Prefer painted staff-line DOM extents when we have a full system —
+    // OSMD AbsolutePosition calibration can under-reach the bass staff.
+    const systemStaffs = this._activeSystemStaffGroups();
+    const perSystem = this._stavesPerSystem();
+    let domTop = null;
+    let domBottom = null;
+    for (const g of systemStaffs) {
+      const extent = this._staffLineExtent(g, host, scrollT);
+      if (extent) {
+        domTop = domTop == null ? extent.top : Math.min(domTop, extent.top);
+        domBottom = domBottom == null ? extent.bottom : Math.max(domBottom, extent.bottom);
+        continue;
+      }
+      const r = g.getBoundingClientRect();
+      if (!(r.height > 1)) continue;
+      const top = r.top - host.top + scrollT;
+      const staffBand = Math.min(r.height * 0.45, Math.max(28, r.height * 0.35));
+      const bottom = top + staffBand;
+      domTop = domTop == null ? top : Math.min(domTop, top);
+      domBottom = domBottom == null ? bottom : Math.max(domBottom, bottom);
+    }
+    if (
+      domTop != null
+      && domBottom != null
+      && domBottom > domTop
+      && systemStaffs.length >= Math.min(Math.max(1, perSystem), 2)
+    ) {
+      return {
+        left: minLeft,
+        top: Math.max(0, domTop),
+        bottom: domBottom,
+      };
+    }
+
     const osmdBand = this._activeSystemStaffLineBounds();
     if (osmdBand && osmdBand.bottom > osmdBand.top) {
       return {
@@ -1161,25 +1195,8 @@ export class SheetView {
       };
     }
 
-    const systemStaffs = this._activeSystemStaffGroups();
-    let minTop = null;
-    let maxBottom = null;
-
-    for (const g of systemStaffs) {
-      const extent = this._staffLineExtent(g, host, scrollT);
-      if (extent) {
-        minTop = minTop == null ? extent.top : Math.min(minTop, extent.top);
-        maxBottom = maxBottom == null ? extent.bottom : Math.max(maxBottom, extent.bottom);
-        continue;
-      }
-      const r = g.getBoundingClientRect();
-      if (!(r.height > 1)) continue;
-      const top = r.top - host.top + scrollT;
-      const staffBand = Math.min(r.height * 0.45, Math.max(28, r.height * 0.35));
-      const bottom = top + staffBand;
-      minTop = minTop == null ? top : Math.min(minTop, top);
-      maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
-    }
+    let minTop = domTop;
+    let maxBottom = domBottom;
 
     if (minTop == null || maxBottom == null || !(maxBottom > minTop)) {
       try {
