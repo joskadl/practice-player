@@ -6,7 +6,7 @@
  * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v43";
+const CACHE = "midi-practice-player-v44";
 
 const PRECACHE = [
   "./",
@@ -24,6 +24,7 @@ const PRECACHE = [
   "./js/ji-retune.js",
   "./js/transport.js",
   "./js/synth.js",
+  "./js/audio-export.js",
   "./js/piano-roll.js",
   "./js/sheet-view.js",
   "./js/version.js",
@@ -36,6 +37,7 @@ const PRECACHE = [
   "./vendor/js-synthesizer.min.js",
   "./vendor/js-synthesizer.worklet.min.js",
   "./vendor/opensheetmusicdisplay.min.js",
+  "./vendor/lame.min.js",
   "./soundfonts/TimGM6mb.sf2",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -46,6 +48,7 @@ const PRECACHE = [
   "./examples/gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.musicxml",
   "./examples/please-come-home-for-christmas.musicxml",
   "./examples/entre-le-boeuf-et-lane-gris.musicxml",
+  "./examples/gabriels-message-satb.musicxml",
 ];
 
 /** True for files that must prefer the network (app code / examples / version). */

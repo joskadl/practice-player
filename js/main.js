@@ -45,6 +45,7 @@ import {
 import { pullRemote, pushRemote, syncConfigured } from "./sync-remote.js";
 import { ProjectSession } from "./project-session.js";
 import { initI18n, t, onLangChange, applyDomI18n } from "./i18n.js";
+import { exportMixToMp3 } from "./audio-export.js";
 
 initI18n();
 
@@ -77,6 +78,7 @@ const els = {
   emptyVoices: document.getElementById("emptyVoices"),
   muteAllBtn: document.getElementById("muteAllBtn"),
   unmuteAllBtn: document.getElementById("unmuteAllBtn"),
+  exportMp3Btn: document.getElementById("exportMp3Btn"),
   pianoRoll: document.getElementById("pianoRoll"),
   sheetMusic: document.getElementById("sheetMusic"),
   remarksRow: document.getElementById("remarksRow"),
@@ -1099,7 +1101,16 @@ function beginVoiceNameEdit(voice, labelEl, nameRow) {
 }
 
 function setLoadedUi(enabled) {
-  for (const el of [els.playBtn, els.pauseBtn, els.stopBtn, els.tempoBpm, els.seek, els.muteAllBtn, els.unmuteAllBtn]) {
+  for (const el of [
+    els.playBtn,
+    els.pauseBtn,
+    els.stopBtn,
+    els.tempoBpm,
+    els.seek,
+    els.muteAllBtn,
+    els.unmuteAllBtn,
+    els.exportMp3Btn,
+  ]) {
     if (el) el.disabled = !enabled;
   }
   els.pauseBtn.disabled = true;
@@ -1538,6 +1549,40 @@ els.unmuteAllBtn.addEventListener("click", () => {
   muted.clear();
   solo.clear();
   renderVoices();
+});
+
+let mp3ExportBusy = false;
+els.exportMp3Btn?.addEventListener("click", async () => {
+  if (!project || mp3ExportBusy) return;
+  mp3ExportBusy = true;
+  if (els.exportMp3Btn) els.exportMp3Btn.disabled = true;
+  const wasPlaying = transport.playing;
+  if (wasPlaying) transport.pause();
+  try {
+    const base = (sourceFileName || project.title || "practice").replace(
+      /\.(musicxml|xml|mid|midi)$/i,
+      "",
+    );
+    const result = await exportMixToMp3({
+      project,
+      voiceGain,
+      applyJi: jiEnabled && !!project.hasPitchBends,
+      instrumentValue: els.instrumentSelect?.value || "score",
+      tempoBpm: transport.tempoBpm,
+      scoreBpm: transport.scoreBpm,
+      fileBaseName: base,
+      onProgress: (ratio) => {
+        const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+        setStatus(t("exportMp3Working", { pct: String(pct) }));
+      },
+    });
+    setStatus(t("exportMp3Done", { file: result.filename }));
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+  } finally {
+    mp3ExportBusy = false;
+    if (els.exportMp3Btn) els.exportMp3Btn.disabled = !project;
+  }
 });
 
 document.addEventListener("keydown", (ev) => {

@@ -43,7 +43,7 @@ Version: see `js/version.js` / `version.json` / footer.
 | Voices | Mute, solo, accompaniment level for non-soloed parts |
 | Views | Piano roll and sheet music (MusicXML) |
 | Edits | Title, stave/voice names, colours, staff lines on/off |
-| Export | Edited MusicXML; practice pack `.practice.json` |
+| Export | Edited MusicXML; practice pack; **MP3** of current mute/solo mix |
 | Sync | Local IndexedDB + Undo; Pull/Push to GitHub or HTTP URL |
 | Offline | PWA install; service worker caches app + soundfont |
 | JI | JustPlay marker / pitch-bend MIDI → JI ↔ 12-TET toggle |
@@ -72,6 +72,7 @@ Files stay on your device unless you Export / Push a practice pack.
 - **Mute** / **Solo** per voice.
 - With any solo active, **Other voices** sets how loud the rest are (default 25%; 0% = classic solo).
 - **Mute all** mutes everyone and clears solos; **Unmute all** clears mutes and solos.
+- **Export MP3** renders the current mix (mute/solo, Sound instrument, tempo, and 12-TET/JI when markers exist) to a downloadable MP3.
 - Click the **colour square** to change note colour (roll + sheet).
 - Click the **voice name** (or the stave name on the sheet) to rename — same name in both places.
 
