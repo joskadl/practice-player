@@ -44,6 +44,8 @@ function shortAbbr(name) {
 const VOICE_COLORS_FIELD = "practice-player-voice-colors";
 const RECORDING_URL_FIELD = "practice-player-recording-url";
 const REMARKS_FIELD = "practice-player-remarks";
+/** Stable home key for modulation UI, e.g. "Bb major" or "A minor". */
+const HOME_KEY_FIELD = "practice-player-home-key";
 
 const STEP_TO_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 const PC_SHARP = [
@@ -79,6 +81,216 @@ const SEMI_TO_FIFTHS = [0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5];
 
 function preferFlats(fifths) {
   return Number(fifths) < 0;
+}
+
+/** Pitch-class (0=C) for a major/minor key signature. */
+export function tonicPcFromFifths(fifths, mode = "major") {
+  const f = Number(fifths) || 0;
+  // Circle-of-fifths major tonics from C.
+  const majorPc = ((f * 7) % 12 + 12) % 12;
+  if (String(mode).toLowerCase().startsWith("min")) {
+    return (majorPc + 9) % 12; // relative minor
+  }
+  return majorPc;
+}
+
+/** Prefer a fifths value in −7…+7 for a tonic pitch class + mode. */
+export function fifthsFromTonicPc(pc, mode = "major") {
+  const want = ((pc % 12) + 12) % 12;
+  const isMinor = String(mode).toLowerCase().startsWith("min");
+  let best = 0;
+  let bestDist = 99;
+  for (let f = -7; f <= 7; f++) {
+    const got = tonicPcFromFifths(f, isMinor ? "minor" : "major");
+    if (got !== want) continue;
+    const dist = Math.abs(f);
+    if (dist < bestDist) {
+      best = f;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+const PC_LABEL_SHARP = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+const PC_LABEL_FLAT = ["C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"];
+
+function labelForPc(pc, mode, preferFlat) {
+  const names = preferFlat ? PC_LABEL_FLAT : PC_LABEL_SHARP;
+  const tonic = names[((pc % 12) + 12) % 12];
+  const isMinor = String(mode).toLowerCase().startsWith("min");
+  return `${tonic} ${isMinor ? "minor" : "major"}`;
+}
+
+/**
+ * Build the 12 key-center options for a mode (same mode as the piece).
+ * @param {"major"|"minor"} mode
+ * @param {boolean} [preferFlat]
+ */
+export function keyCenterOptions(mode = "major", preferFlat = false) {
+  const isMinor = String(mode).toLowerCase().startsWith("min");
+  const m = isMinor ? "minor" : "major";
+  const out = [];
+  for (let pc = 0; pc < 12; pc++) {
+    const fifths = fifthsFromTonicPc(pc, m);
+    const flat = preferFlat || fifths < 0;
+    out.push({
+      pc,
+      mode: m,
+      fifths,
+      label: labelForPc(pc, m, flat),
+    });
+  }
+  return out;
+}
+
+/** @param {string} text */
+export function parseKeyLabel(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  const m = raw.match(/^([A-Ga-g])([#b♯♭]?)\s*(major|minor|maj|min)?$/i);
+  if (!m) return null;
+  const step = m[1].toUpperCase();
+  const acc = m[2];
+  let pc = STEP_TO_PC[step];
+  if (pc == null) return null;
+  if (acc === "#" || acc === "♯") pc = (pc + 1) % 12;
+  if (acc === "b" || acc === "♭") pc = (pc + 11) % 12;
+  const modeRaw = (m[3] || "major").toLowerCase();
+  const mode = modeRaw.startsWith("min") ? "minor" : "major";
+  return { pc, mode, label: labelForPc(pc, mode, acc === "b" || acc === "♭" || pc === 1 || pc === 3 || pc === 6 || pc === 8 || pc === 10) };
+}
+
+/**
+ * Read the prevailing written key (most common first-measure key across parts).
+ * @param {string} xmlText
+ * @returns {{ pc: number, mode: "major"|"minor", fifths: number, label: string }|null}
+ */
+export function readScoreKey(xmlText) {
+  try {
+    const doc = parseDoc(xmlText);
+    const root = doc.documentElement;
+    /** @type {Map<string, number>} */
+    const votes = new Map();
+    for (const part of childrenByName(root, "part")) {
+      const measure = childrenByName(part, "measure")[0];
+      if (!measure) continue;
+      const attrs = firstChild(measure, "attributes");
+      const keyEl = attrs ? firstChild(attrs, "key") : null;
+      if (!keyEl) continue;
+      const fifths = Number(firstChild(keyEl, "fifths")?.textContent ?? 0);
+      const modeRaw = (firstChild(keyEl, "mode")?.textContent || "major").trim().toLowerCase();
+      const mode = modeRaw.startsWith("min") ? "minor" : "major";
+      const id = `${fifths}|${mode}`;
+      votes.set(id, (votes.get(id) || 0) + 1);
+    }
+    if (!votes.size) return null;
+    let best = null;
+    let bestN = -1;
+    for (const [id, n] of votes) {
+      if (n > bestN) {
+        best = id;
+        bestN = n;
+      }
+    }
+    const [fifthsStr, mode] = best.split("|");
+    const fifths = Number(fifthsStr);
+    const pc = tonicPcFromFifths(fifths, mode);
+    return {
+      pc,
+      mode: /** @type {"major"|"minor"} */ (mode),
+      fifths,
+      label: labelForPc(pc, mode, fifths < 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {string} xmlText
+ * @returns {{ pc: number, mode: "major"|"minor", label: string }|null}
+ */
+export function readHomeKey(xmlText) {
+  try {
+    const doc = parseDoc(xmlText);
+    const raw = readMiscField(doc.documentElement, HOME_KEY_FIELD);
+    const parsed = parseKeyLabel(raw || "");
+    if (parsed) return parsed;
+  } catch {
+    /* fall through */
+  }
+  const score = readScoreKey(xmlText);
+  if (!score) return null;
+  return { pc: score.pc, mode: score.mode, label: score.label };
+}
+
+/**
+ * Write / ensure a stable home-key misc field (does not change notation).
+ * @param {string} xmlText
+ * @param {string} [label] e.g. "G major"
+ * @returns {string}
+ */
+export function writeHomeKey(xmlText, label) {
+  const doc = parseDoc(xmlText);
+  const parsed = parseKeyLabel(label) || readHomeKey(xmlText) || readScoreKey(xmlText);
+  if (!parsed) return xmlText;
+  writeMiscField(doc.documentElement, doc, HOME_KEY_FIELD, parsed.label);
+  return serializeDoc(doc);
+}
+
+/**
+ * Ensure every first-measure key has a mode, and stamp home-key if missing.
+ * @param {string} xmlText
+ * @param {string} [homeLabel]
+ * @returns {string}
+ */
+export function ensureKeyMetadata(xmlText, homeLabel) {
+  const doc = parseDoc(xmlText);
+  const root = doc.documentElement;
+  const home =
+    parseKeyLabel(homeLabel || "") ||
+    parseKeyLabel(readMiscField(root, HOME_KEY_FIELD) || "") ||
+    readScoreKey(xmlText);
+  if (!home) return xmlText;
+
+  for (const part of childrenByName(root, "part")) {
+    const measure = childrenByName(part, "measure")[0];
+    if (!measure) continue;
+    const attrs = firstChild(measure, "attributes");
+    if (!attrs) continue;
+    for (const keyEl of childrenByName(attrs, "key")) {
+      let modeEl = firstChild(keyEl, "mode");
+      if (!modeEl) {
+        modeEl = doc.createElement("mode");
+        keyEl.appendChild(modeEl);
+      }
+      if (!(modeEl.textContent || "").trim()) {
+        setText(modeEl, home.mode);
+      }
+    }
+  }
+
+  writeMiscField(root, doc, HOME_KEY_FIELD, home.label);
+  return serializeDoc(doc);
+}
+
+/**
+ * Semitone shift that follows the circle of fifths (keeps C→G as +7, not −5).
+ * @param {number} fromPc
+ * @param {number} toPc
+ * @param {"major"|"minor"} [mode]
+ */
+export function semitoneDelta(fromPc, toPc, mode = "major") {
+  const fromF = fifthsFromTonicPc(fromPc, mode);
+  const toF = fifthsFromTonicPc(toPc, mode);
+  let df = toF - fromF;
+  while (df > 6) df -= 12;
+  while (df < -6) df += 12;
+  let d = df * 7;
+  while (d > 11) d -= 12;
+  while (d < -11) d += 12;
+  return d;
 }
 
 function midiToStepAlter(midi, flats) {
@@ -595,4 +807,4 @@ export function downloadMusicXml(xmlText, fileName = "score.musicxml") {
   URL.revokeObjectURL(url);
 }
 
-export { RECORDING_URL_FIELD, REMARKS_FIELD };
+export { RECORDING_URL_FIELD, REMARKS_FIELD, HOME_KEY_FIELD };
