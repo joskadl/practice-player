@@ -65,6 +65,11 @@ export function calculatePitchBendValue(targetHz, midiNote, pitchBendRange = 2) 
 /**
  * Pick a nearby MIDI note so the residual bend fits in ±pitchBendRange
  * (port of core.ji_engine.find_best_midi_note_for_frequency).
+ *
+ * Always returns a base note whose bend stays within range when possible.
+ * If the local search finds nothing (tiny searchRange / bad Hz), falls back to
+ * the nearest 12-TET MIDI for ``targetHz`` — never a saturated bend on a
+ * distant preferred note.
  * @returns {{ midiNote: number, signedBend: number }}
  */
 export function findBestMidiNoteForFrequency(
@@ -73,22 +78,40 @@ export function findBestMidiNoteForFrequency(
   pitchBendRange = 2,
   searchRange = 12,
 ) {
-  let bestNote = preferredNote | 0;
-  let bestBend = calculatePitchBendValue(targetHz, bestNote, pitchBendRange);
-  let minAbsSemis = Infinity;
+  const preferred = preferredNote | 0;
+  if (!(targetHz > 0) || !Number.isFinite(targetHz)) {
+    return { midiNote: preferred, signedBend: 0 };
+  }
+
   const pb = Math.max(1, pitchBendRange | 0);
+  let bestNote = preferred;
+  let bestBend = 0;
+  let minAbsSemis = Infinity;
+  let found = false;
 
   for (let offset = -searchRange; offset <= searchRange; offset++) {
-    const test = (preferredNote | 0) + offset;
+    const test = preferred + offset;
     if (test < 0 || test > 127) continue;
-    const cents = 1200 * Math.log2(targetHz / midiNoteTo12tetHz(test));
+    const noteHz = midiNoteTo12tetHz(test);
+    if (!(noteHz > 0)) continue;
+    const cents = 1200 * Math.log2(targetHz / noteHz);
+    if (!Number.isFinite(cents)) continue;
     const absSemis = Math.abs(cents / 100);
     if (absSemis <= pb && absSemis < minAbsSemis) {
       minAbsSemis = absSemis;
       bestNote = test;
       bestBend = calculatePitchBendValue(targetHz, test, pb);
+      found = true;
     }
   }
+
+  if (!found) {
+    // Nearest 12-TET MIDI to the target is always within ±50¢ — reliable JI.
+    const nearest = Math.round(69 + 12 * Math.log2(targetHz / 440));
+    bestNote = Math.max(0, Math.min(127, nearest));
+    bestBend = calculatePitchBendValue(targetHz, bestNote, pb);
+  }
+
   return { midiNote: bestNote, signedBend: bestBend };
 }
 

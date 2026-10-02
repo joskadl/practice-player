@@ -98,7 +98,11 @@ function buildEvents(project, voiceGain, applyJi, tempoBpm, scoreBpmIn) {
     }
   }
 
-  events.sort((a, b) => a.t - b.t || (a.kind === "off" ? -1 : 1) - (b.kind === "off" ? -1 : 1));
+  events.sort((a, b) => {
+    if (a.t !== b.t) return a.t - b.t;
+    const rank = (k) => (k === "off" ? 0 : k === "bend" ? 1 : 2);
+    return rank(a.kind) - rank(b.kind);
+  });
   const durationSec = secAt(project.durationTicks || 0) + TAIL_SEC;
   return { events, durationSec, audibleNotes };
 }
