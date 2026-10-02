@@ -14,7 +14,10 @@
       <supports element="print" attribute="new-system" type="yes" value="yes" />
       <supports element="stem" type="yes" />
       </encoding>
-    </identification>
+      <miscellaneous>
+      <miscellaneous-field name="practice-player-home-key">G major</miscellaneous-field>
+    </miscellaneous>
+  </identification>
   <defaults>
     <scaling>
       <millimeters>6.99912</millimeters>
@@ -96,6 +99,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>1</fifths>
+        <mode>major</mode>
           </key>
         <time symbol="common">
           <beats>4</beats>
@@ -1836,6 +1840,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>1</fifths>
+        <mode>major</mode>
           </key>
         <time symbol="common">
           <beats>4</beats>
@@ -3279,6 +3284,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>1</fifths>
+        <mode>major</mode>
           </key>
         <time symbol="common">
           <beats>4</beats>
@@ -4617,6 +4623,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>1</fifths>
+        <mode>major</mode>
           </key>
         <time symbol="common">
           <beats>4</beats>

@@ -12,6 +12,9 @@
       <supports element="stem" type="yes" />
       <supports element="accidental" type="yes" />
     </encoding>
+    <miscellaneous>
+      <miscellaneous-field name="practice-player-home-key">C major</miscellaneous-field>
+    </miscellaneous>
   </identification>
   <defaults>
     <scaling>
@@ -84,6 +87,7 @@
         <divisions>10080</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>major</mode>
         </key>
         <time>
           <beats>6</beats>
@@ -1122,6 +1126,7 @@
         <divisions>10080</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>major</mode>
         </key>
         <time>
           <beats>6</beats>
@@ -2151,6 +2156,7 @@
         <divisions>10080</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>major</mode>
         </key>
         <time>
           <beats>6</beats>
@@ -3133,6 +3139,7 @@
         <divisions>10080</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>major</mode>
         </key>
         <time>
           <beats>6</beats>

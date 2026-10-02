@@ -13,7 +13,10 @@
       <supports element="print" attribute="new-system" type="yes" value="yes" />
       <supports element="stem" type="yes" />
       </encoding>
-    </identification>
+      <miscellaneous>
+      <miscellaneous-field name="practice-player-home-key">E major</miscellaneous-field>
+    </miscellaneous>
+  </identification>
   <defaults>
     <scaling>
       <millimeters>7.05556</millimeters>
@@ -144,6 +147,7 @@
         <divisions>8</divisions>
         <key>
           <fifths>7</fifths>
+        <mode>major</mode>
           </key>
         <time>
           <beats>12</beats>
@@ -4634,6 +4638,7 @@
         <divisions>8</divisions>
         <key>
           <fifths>4</fifths>
+        <mode>major</mode>
           </key>
         <time>
           <beats>12</beats>
@@ -5737,6 +5742,7 @@
         <divisions>8</divisions>
         <key>
           <fifths>4</fifths>
+        <mode>major</mode>
           </key>
         <time>
           <beats>12</beats>
@@ -26711,6 +26717,7 @@
         <divisions>8</divisions>
         <key>
           <fifths>4</fifths>
+        <mode>major</mode>
           </key>
         <time>
           <beats>12</beats>

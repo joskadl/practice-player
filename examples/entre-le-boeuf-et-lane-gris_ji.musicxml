@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
   <work>
     <work-title>Entre le bœuf et l'âne gris</work-title>
@@ -11,11 +10,11 @@
     <encoding>
       <software>MuseScore Studio 4.7.5</software>
       <encoding-date>2026-09-29</encoding-date>
-      <supports element="accidental" type="yes"/>
-      <supports element="beam" type="yes"/>
-      <supports element="print" attribute="new-page" type="yes" value="yes"/>
-      <supports element="print" attribute="new-system" type="yes" value="yes"/>
-      <supports element="stem" type="yes"/>
+      <supports element="accidental" type="yes" />
+      <supports element="beam" type="yes" />
+      <supports element="print" attribute="new-page" type="yes" value="yes" />
+      <supports element="print" attribute="new-system" type="yes" value="yes" />
+      <supports element="stem" type="yes" />
       </encoding>
     <miscellaneous>
       <miscellaneous-field name="practice-player-home-key">G major</miscellaneous-field>
@@ -51,7 +50,7 @@ Mille séraphins,
 Volent à l'entour
 De ce grand Dieu d'amour.
 </miscellaneous-field>
-      </miscellaneous>
+      <miscellaneous-field name="justplay-ji-file">{"type":"ji_file","version":1,"refNote":60,"pbRange":2}</miscellaneous-field><miscellaneous-field name="justplay-ji-markers">[{"type":"ji_marker","tick":0.0,"config":[null,null,null,null,[0,1],null,null,null,null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":1.0,"config":[null,null,null,null,null,null,[2,1],null,null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":2.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":3.0,"config":[null,null,null,null,[0,1],null,[-2,2],null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":4.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":6.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":7.0,"config":[null,null,null,null,null,null,[-2,2],null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":8.0,"config":[null,null,[-2,1],null,[0,1],null,[-2,2],null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":10.0,"config":[[0,0],null,null,null,[0,1],null,null,null,null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":11.0,"config":[null,null,null,null,null,null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":12.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":16.0,"config":[null,null,[2,0],null,null,null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":18.0,"config":[null,null,null,null,null,null,[2,1],null,null,[3,0],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":20.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":22.0,"config":[null,null,[2,0],null,null,null,null,null,null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":24.0,"config":[[0,0],null,null,null,[0,1],null,null,[1,0],null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":25.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":26.0,"config":[[0,0],null,null,null,[0,1],null,null,[1,0],null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":27.0,"config":[null,null,[-2,1],null,[0,1],null,[-2,2],null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":28.0,"config":[null,null,[-2,1],null,null,null,null,[-3,1],null,null,null,[-3,2]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":30.0,"config":[null,null,null,null,null,null,[-2,2],null,null,null,null,[-3,2]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":32.0,"config":[null,null,[2,0],null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":33.0,"config":[[0,0],null,null,null,[0,1],null,null,[1,0],null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":34.0,"config":[null,null,[2,0],null,null,null,[2,1],null,null,[3,0],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":35.0,"config":[null,null,[2,0],null,[0,1],null,[2,1],null,null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":36.0,"config":[null,null,[2,0],null,null,null,null,[1,0],null,[3,0],null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":37.0,"config":[null,null,null,null,null,null,null,null,null,[3,0],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":38.0,"config":[null,null,null,null,null,null,null,[1,0],null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":40.0,"config":[[0,0],null,null,null,[0,1],null,null,null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":41.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":42.0,"config":[null,null,[-2,1],null,null,null,[-2,2],null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":43.0,"config":[[0,0],null,null,null,null,null,null,null,null,[-1,1],null,[-3,2]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":44.0,"config":[null,null,null,null,[0,1],null,[2,1],[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":45.0,"config":[null,null,null,null,null,null,[2,1],null,null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":46.0,"config":[null,null,null,null,[0,1],null,null,null,null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":48.0,"config":[null,null,null,null,[0,1],null,null,null,null,[-1,1],null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":49.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":50.0,"config":[null,null,[2,0],null,null,null,[2,1],null,null,[3,0],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":51.0,"config":[null,null,[2,0],null,null,null,[2,1],null,null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":52.0,"config":[[0,0],null,null,null,[0,1],null,null,[1,0],null,null,null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":53.0,"config":[[0,0],null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":54.0,"config":[null,null,null,null,[0,1],null,null,null,null,[-1,1],null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":55.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":56.0,"config":[[0,0],null,null,null,[0,1],null,[2,1],null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":57.0,"config":[null,null,null,null,null,null,null,null,null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":58.0,"config":[[0,0],null,null,null,null,null,null,null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":59.0,"config":[[0,0],null,null,null,[0,1],null,[2,1],null,null,[-1,1],null,null],"metadata":{"refNote":60,"ji":true}},{"type":"ji_marker","tick":60.0,"config":[null,null,null,null,[0,1],null,null,[1,0],null,null,null,[1,1]],"metadata":{"refNote":60,"ji":true}}]</miscellaneous-field></miscellaneous>
     </identification>
   <defaults>
     <scaling>
@@ -98,9 +97,9 @@ De ce grand Dieu d'amour.
       <note-size type="grace">70</note-size>
       <note-size type="grace-cue">49</note-size>
       </appearance>
-    <music-font font-family="Leland"/>
-    <word-font font-family="Edwin" font-size="10"/>
-    <lyric-font font-family="Edwin" font-size="10"/>
+    <music-font font-family="Leland" />
+    <word-font font-family="Edwin" font-size="10" />
+    <lyric-font font-family="Edwin" font-size="10" />
     </defaults>
   <credit page="1">
     <credit-type>title</credit-type>
@@ -122,7 +121,7 @@ De ce grand Dieu d'amour.
         <instrument-name>Soprano</instrument-name>
         <instrument-sound>voice.soprano</instrument-sound>
         </score-instrument>
-      <midi-device id="P1-I1" port="1"></midi-device>
+      <midi-device id="P1-I1" port="1" />
       <midi-instrument id="P1-I1">
         <midi-channel>1</midi-channel>
         <midi-program>53</midi-program>
@@ -137,7 +136,7 @@ De ce grand Dieu d'amour.
         <instrument-name>Alto</instrument-name>
         <instrument-sound>voice.alto</instrument-sound>
         </score-instrument>
-      <midi-device id="P2-I1" port="1"></midi-device>
+      <midi-device id="P2-I1" port="1" />
       <midi-instrument id="P2-I1">
         <midi-channel>2</midi-channel>
         <midi-program>53</midi-program>
@@ -152,7 +151,7 @@ De ce grand Dieu d'amour.
         <instrument-name>Tenor</instrument-name>
         <instrument-sound>voice.tenor</instrument-sound>
         </score-instrument>
-      <midi-device id="P3-I1" port="1"></midi-device>
+      <midi-device id="P3-I1" port="1" />
       <midi-instrument id="P3-I1">
         <midi-channel>3</midi-channel>
         <midi-program>53</midi-program>
@@ -167,7 +166,7 @@ De ce grand Dieu d'amour.
         <instrument-name>Bass</instrument-name>
         <instrument-sound>voice.bass</instrument-sound>
         </score-instrument>
-      <midi-device id="P4-I1" port="1"></midi-device>
+      <midi-device id="P4-I1" port="1" />
       <midi-instrument id="P4-I1">
         <midi-channel>4</midi-channel>
         <midi-program>53</midi-program>
@@ -175,7 +174,7 @@ De ce grand Dieu d'amour.
         <pan>0</pan>
         </midi-instrument>
       </score-part>
-    <part-group type="stop" number="1"/>
+    <part-group type="stop" number="1" />
     </part-list>
   <part id="P1">
     <measure number="1" width="210.67">
@@ -208,7 +207,7 @@ De ce grand Dieu d'amour.
           <words default-y="17.86" relative-y="10">Le sommeil de l'enfant Jésus</words>
           </direction-type>
         </direction>
-      <sound tempo="70"/>
+      <sound tempo="70" />
       <note default-x="100.25" default-y="-40">
         <pitch>
           <step>E</step>
@@ -306,7 +305,7 @@ De ce grand Dieu d'amour.
         <duration>3</duration>
         <voice>1</voice>
         <type>quarter</type>
-        <dot default-x="30.5" default-y="-25"/>
+        <dot default-x="30.5" default-y="-25" />
         <stem>up</stem>
         <lyric number="1" default-y="-48.38" relative-y="-30">
           <syllabic>single</syllabic>
@@ -753,7 +752,7 @@ De ce grand Dieu d'amour.
         <duration>3</duration>
         <voice>1</voice>
         <type>quarter</type>
-        <dot default-x="36.28" default-y="-35"/>
+        <dot default-x="36.28" default-y="-35" />
         <stem>up</stem>
         <lyric number="1" default-y="-45" relative-y="-30">
           <syllabic>single</syllabic>
@@ -904,7 +903,7 @@ De ce grand Dieu d'amour.
         <duration>3</duration>
         <voice>1</voice>
         <type>quarter</type>
-        <dot default-x="30.5" default-y="-134.22"/>
+        <dot default-x="30.5" default-y="-134.22" />
         <stem>down</stem>
         </note>
       <note default-x="72.97" default-y="-129.22">
@@ -2239,7 +2238,7 @@ De ce grand Dieu d'amour.
         <duration>3</duration>
         <voice>1</voice>
         <type>quarter</type>
-        <dot default-x="36.28" default-y="-327.17"/>
+        <dot default-x="36.28" default-y="-327.17" />
         <stem>up</stem>
         </note>
       <note default-x="103.21" default-y="-327.17">

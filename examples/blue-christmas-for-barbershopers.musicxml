@@ -10,7 +10,10 @@
       <supports element="print" attribute="new-system" type="yes" value="yes" />
       <supports element="stem" type="yes" />
       </encoding>
-    </identification>
+      <miscellaneous>
+      <miscellaneous-field name="practice-player-home-key">Bb major</miscellaneous-field>
+    </miscellaneous>
+  </identification>
   <defaults>
     <scaling>
       <millimeters>7.0104</millimeters>
@@ -120,6 +123,7 @@
         <divisions>6</divisions>
         <key>
           <fifths>-2</fifths>
+        <mode>major</mode>
           </key>
         <time>
           <beats>4</beats>
@@ -151,11 +155,13 @@
           <words color="#0000FF" relative-x="-6.5" relative-y="30" font-weight="bold" font-size="14">Intro.</words>
           </direction-type>
         </direction>
-      <note default-x="110.43" default-y="-20">
+      
+      
+      <note>
         <rest />
-        <duration>6</duration>
+        <duration>24</duration>
         <voice>1</voice>
-        <type>quarter</type>
+        <type>whole</type>
         </note>
       </measure>
     <measure number="2" width="230.84">
@@ -3203,6 +3209,7 @@
         <divisions>6</divisions>
         <key>
           <fifths>-2</fifths>
+        <mode>major</mode>
           </key>
         <time>
           <beats>4</beats>
@@ -3218,7 +3225,31 @@
           <words color="#FF0000" default-y="11.2" relative-y="20" font-size="12">Bb:</words>
           </direction-type>
         </direction>
-      <note default-x="110.43" default-y="-130">
+      
+      
+      
+      
+      
+      
+      <note>
+        <rest />
+        <duration>6</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        </note>
+      <note>
+        <rest />
+        <duration>6</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        </note>
+      <note>
+        <rest />
+        <duration>6</duration>
+        <voice>1</voice>
+        <type>quarter</type>
+        </note>
+      <note>
         <rest />
         <duration>6</duration>
         <voice>1</voice>
@@ -3229,8 +3260,26 @@
           </lyric>
         </note>
       <backup>
-        <duration>6</duration>
+        <duration>24</duration>
         </backup>
+      <note>
+        <rest />
+        <duration>6</duration>
+        <voice>2</voice>
+        <type>quarter</type>
+        </note>
+      <note>
+        <rest />
+        <duration>6</duration>
+        <voice>2</voice>
+        <type>quarter</type>
+        </note>
+      <note>
+        <rest />
+        <duration>6</duration>
+        <voice>2</voice>
+        <type>quarter</type>
+        </note>
       <note default-x="110.43" default-y="-160">
         <pitch>
           <step>D</step>

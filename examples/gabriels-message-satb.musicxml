@@ -10,7 +10,10 @@
       <supports element="print" attribute="new-system" type="yes" value="yes" />
       <supports element="stem" type="yes" />
       </encoding>
-    </identification>
+      <miscellaneous>
+      <miscellaneous-field name="practice-player-home-key">A minor</miscellaneous-field>
+    </miscellaneous>
+  </identification>
   <defaults>
     <scaling>
       <millimeters>5.16</millimeters>
@@ -112,6 +115,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>minor</mode>
           </key>
         <time>
           <beats>9</beats>
@@ -1379,6 +1383,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>minor</mode>
           </key>
         <time>
           <beats>9</beats>
@@ -2537,6 +2542,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>minor</mode>
           </key>
         <time>
           <beats>9</beats>
@@ -3710,6 +3716,7 @@
         <divisions>2</divisions>
         <key>
           <fifths>0</fifths>
+        <mode>minor</mode>
           </key>
         <time>
           <beats>9</beats>
