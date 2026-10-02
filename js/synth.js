@@ -44,12 +44,25 @@ export class ChoirSynth {
   }
 
   async ensure() {
-    if (this.synth && this.sfontId != null) {
-      if (this.ctx.state === "suspended") await this.ctx.resume();
-      return;
+    await this.warm();
+    if (this.ctx?.state === "suspended") {
+      try {
+        await this.ctx.resume();
+      } catch {
+        /* Browsers may require a user gesture; caller can retry on click. */
+      }
     }
+  }
+
+  /** Load WASM + soundfont without requiring an audio unlock (safe for idle preload). */
+  async warm() {
+    if (this.synth && this.sfontId != null) return;
     if (!this._initPromise) this._initPromise = this._init();
     await this._initPromise;
+  }
+
+  get isReady() {
+    return !!(this.synth && this.sfontId != null);
   }
 
   async _init() {
@@ -71,7 +84,6 @@ export class ChoirSynth {
     if (!res.ok) throw new Error(`Soundfont load failed (${res.status})`);
     this.sfontId = await this.synth.loadSFont(await res.arrayBuffer());
     this._applyPrograms();
-    if (this.ctx.state === "suspended") await this.ctx.resume();
   }
 
   /**

@@ -16,6 +16,12 @@ import {
   stripPersonalNames,
   readRemarks,
   writeRemarks,
+  readHomeKey,
+  readScoreKey,
+  writeHomeKey,
+  ensureKeyMetadata,
+  keyCenterOptions,
+  semitoneDelta,
 } from "./musicxml-edit.js";
 import { ChoirSynth } from "./synth.js";
 import { Transport } from "./transport.js";
@@ -81,6 +87,9 @@ const els = {
   exportMp3Btn: document.getElementById("exportMp3Btn"),
   pianoRoll: document.getElementById("pianoRoll"),
   sheetMusic: document.getElementById("sheetMusic"),
+  scorePanel: document.getElementById("scorePanel"),
+  busyOverlay: document.getElementById("busyOverlay"),
+  busyLabel: document.getElementById("busyLabel"),
   remarksRow: document.getElementById("remarksRow"),
   remarksInput: document.getElementById("remarksInput"),
   viewRollBtn: document.getElementById("viewRollBtn"),
@@ -90,6 +99,7 @@ const els = {
   sheetZoomInBtn: document.getElementById("sheetZoomInBtn"),
   sheetZoomLabel: document.getElementById("sheetZoomLabel"),
   sheetPdfBtn: document.getElementById("sheetPdfBtn"),
+  keyCenterSelect: document.getElementById("keyCenterSelect"),
   sheetFullscreenBtn: document.getElementById("sheetFullscreenBtn"),
   sheetStage: document.getElementById("sheetStage"),
   sheetFsPlayBtn: document.getElementById("sheetFsPlayBtn"),
@@ -97,8 +107,6 @@ const els = {
   sheetFsStopBtn: document.getElementById("sheetFsStopBtn"),
   sheetFsZoomOutBtn: document.getElementById("sheetFsZoomOutBtn"),
   sheetFsZoomInBtn: document.getElementById("sheetFsZoomInBtn"),
-  transposeDownBtn: document.getElementById("transposeDownBtn"),
-  transposeUpBtn: document.getElementById("transposeUpBtn"),
   sheetSaveBtn: document.getElementById("sheetSaveBtn"),
   sheetAnnotBar: document.getElementById("sheetAnnotBar"),
   layerStavesBtn: document.getElementById("layerStavesBtn"),
@@ -423,6 +431,57 @@ function noteColor(note) {
 function setStatus(msg, isError = false) {
   els.status.textContent = msg || "";
   els.status.classList.toggle("error", !!isError);
+  if (!isError && busyStack.length) els.status.classList.add("is-busy");
+  else if (!busyStack.length) els.status.classList.remove("is-busy");
+}
+
+/** @type {string[]} */
+const busyStack = [];
+
+function applyBusyUi() {
+  const busy = busyStack.length > 0;
+  const label = busy ? busyStack[busyStack.length - 1] : "";
+  document.body.classList.toggle("is-busy", busy);
+  if (els.scorePanel) {
+    els.scorePanel.classList.toggle("is-busy", busy);
+    els.scorePanel.setAttribute("aria-busy", busy ? "true" : "false");
+  }
+  if (els.busyOverlay) els.busyOverlay.hidden = !busy;
+  if (els.busyLabel && label) els.busyLabel.textContent = label;
+  if (busy) {
+    els.status.classList.add("is-busy");
+    if (label) setStatus(label);
+  } else {
+    els.status.classList.remove("is-busy");
+  }
+}
+
+/** Show loading chrome for slow navigation / render work. */
+function beginBusy(message) {
+  busyStack.push(message || t("busyWorking"));
+  applyBusyUi();
+}
+
+function endBusy() {
+  busyStack.pop();
+  applyBusyUi();
+}
+
+async function withBusy(message, fn) {
+  beginBusy(message);
+  try {
+    return await fn();
+  } finally {
+    endBusy();
+  }
+}
+
+function showSheetLoadingPlaceholder(message) {
+  sheet.clear();
+  const text = message || t("busyRenderingSheet");
+  if (els.sheetMusic) {
+    els.sheetMusic.innerHTML = `<p class="hint sheet-placeholder sheet-loading">${text}</p>`;
+  }
 }
 
 /** Linear gain for a voice: muted=0, solo focus=1, other under solo=accompaniment. */
@@ -489,6 +548,73 @@ function updateSheetZoomLabel() {
 
 function updateSheetToolbar() {
   if (els.sheetSaveBtn) els.sheetSaveBtn.hidden = !sheet.dirty;
+  syncKeyCenterSelect();
+}
+
+/** @type {boolean} */
+let keyCenterSelectSilent = false;
+
+function syncKeyCenterSelect() {
+  const sel = els.keyCenterSelect;
+  if (!sel) return;
+  const xml = project?.musicXml ? currentMusicXml() : "";
+  const home = xml ? readHomeKey(xml) : null;
+  const current = xml ? readScoreKey(xml) : null;
+  const mode = home?.mode || current?.mode || "major";
+  const preferFlat = (current?.fifths ?? 0) < 0;
+  const options = keyCenterOptions(mode, preferFlat);
+  const selectedPc = current?.pc ?? home?.pc;
+
+  keyCenterSelectSilent = true;
+  sel.innerHTML = "";
+  if (!project?.musicXml || selectedPc == null) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "—";
+    sel.appendChild(opt);
+    sel.disabled = true;
+    keyCenterSelectSilent = false;
+    return;
+  }
+  for (const k of options) {
+    const opt = document.createElement("option");
+    opt.value = String(k.pc);
+    const isHome = home != null && k.pc === home.pc && k.mode === home.mode;
+    opt.textContent = isHome ? t("modulateOriginal", { key: k.label }) : k.label;
+    if (isHome) opt.dataset.homeKey = "1";
+    if (k.pc === selectedPc) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.disabled = false;
+  keyCenterSelectSilent = false;
+}
+
+async function modulateToKeyCenter(targetPc) {
+  if (!project?.musicXml || targetPc == null || !Number.isFinite(targetPc)) return;
+  try {
+    const base = currentMusicXml();
+    const stamped = ensureKeyMetadata(base);
+    const current = readScoreKey(stamped);
+    if (!current) throw new Error("Could not read the score key signature");
+    const delta = semitoneDelta(current.pc, targetPc, current.mode);
+    if (!delta) {
+      syncKeyCenterSelect();
+      return;
+    }
+    let next = transposeMusicXml(stamped, delta);
+    // Keep the original home key stable across modulations.
+    const home = readHomeKey(stamped);
+    if (home?.label) next = writeHomeKey(next, home.label);
+    const after = readScoreKey(next);
+    await applyMutatedMusicXml(next, {
+      label: `Key → ${after?.label || targetPc}`,
+      dirty: true,
+    });
+    setStatus(t("modulateDone", { key: after?.label || String(targetPc) }));
+  } catch (err) {
+    setStatus(err?.message || String(err), true);
+    syncKeyCenterSelect();
+  }
 }
 
 function currentMusicXml() {
@@ -583,13 +709,16 @@ async function applyMutatedMusicXml(xml, opts = {}) {
   els.durationLabel.textContent = formatTime(project.secondsAt(project.durationTicks));
   updateTuningUi();
 
-  await sheet.reloadXml(xml, {
-    voices: project.voices,
-    isVoiceAudible: voiceAudible,
-    voiceGain,
-    isVoiceVisible: voiceVisible,
-    ticksPerBeat: project.ticksPerBeat,
-    onsetTicks: project.onsetTicks || [],
+  showSheetLoadingPlaceholder(t("busyUpdatingScore"));
+  await withBusy(t("busyUpdatingScore"), async () => {
+    await sheet.reloadXml(xml, {
+      voices: project.voices,
+      isVoiceAudible: voiceAudible,
+      voiceGain,
+      isVoiceVisible: voiceVisible,
+      ticksPerBeat: project.ticksPerBeat,
+      onsetTicks: project.onsetTicks || [],
+    });
   });
   if (opts.dirty !== false) sheet.markDirty();
   else sheet.markSaved(xml);
@@ -602,26 +731,6 @@ async function applyMutatedMusicXml(xml, opts = {}) {
   updateRemarksUi(xml);
   syncAnnotBar(sheet.getLayers());
   if (opts.label) void recordSharedEdit(opts.label);
-}
-
-async function transposeScore(semitones) {
-  if (!project?.musicXml) return;
-  try {
-    const base = currentMusicXml();
-    const next = transposeMusicXml(base, semitones);
-    const label =
-      semitones > 0
-        ? `Transpose +${semitones}`
-        : `Transpose ${semitones}`;
-    await applyMutatedMusicXml(next, { label, dirty: true });
-    setStatus(
-      semitones > 0
-        ? `Transposed up ${semitones} semitone${semitones === 1 ? "" : "s"}`
-        : `Transposed down ${Math.abs(semitones)} semitone${Math.abs(semitones) === 1 ? "" : "s"}`,
-    );
-  } catch (err) {
-    setStatus(err?.message || String(err), true);
-  }
 }
 
 async function editRecordingUrl() {
@@ -826,13 +935,36 @@ function updateScoreViewUi() {
   if (!showSheet) {
     if (isSheetFullscreen()) void exitSheetFullscreen();
     roll.draw();
-  } else if (sheet.hasScore()) {
-    void sheet.revealAndRender().then(() => {
+  }
+  updateSheetZoomLabel();
+}
+
+async function setScoreView(view) {
+  scoreView = view;
+  updateScoreViewUi();
+  if (view !== "sheet" || !project?.musicXml) return;
+  if (!sheet.hasScore()) {
+    showSheetLoadingPlaceholder(t("busyRenderingSheet"));
+    await withBusy(t("busyRenderingSheet"), async () => {
+      await sheet.load(project.musicXml, {
+        voices: project.voices,
+        isVoiceAudible: voiceAudible,
+        voiceGain,
+        isVoiceVisible: voiceVisible,
+        ticksPerBeat: project.ticksPerBeat,
+        onsetTicks: project.onsetTicks || [],
+        playheadTick: transport.playheadTick,
+      });
       updateSheetZoomLabel();
       syncSheetPlayhead(transport.playheadTick, { scroll: true });
     });
+    return;
   }
-  updateSheetZoomLabel();
+  await withBusy(t("busyRenderingSheet"), async () => {
+    await sheet.revealAndRender();
+    updateSheetZoomLabel();
+    syncSheetPlayhead(transport.playheadTick, { scroll: true });
+  });
 }
 
 function fullscreenElement() {
@@ -902,17 +1034,14 @@ async function onSheetFullscreenChange() {
   // Let the browser finish layout before OSMD measures the new viewport.
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
-    await sheet.revealAndRender();
-    updateSheetZoomLabel();
-    syncSheetPlayhead(transport.playheadTick, { scroll: true });
+    await withBusy(t("busyRenderingSheet"), async () => {
+      await sheet.revealAndRender();
+      updateSheetZoomLabel();
+      syncSheetPlayhead(transport.playheadTick, { scroll: true });
+    });
   } catch {
     /* ignore */
   }
-}
-
-function setScoreView(view) {
-  scoreView = view;
-  updateScoreViewUi();
 }
 
 function updateTuningUi() {
@@ -1119,6 +1248,13 @@ function setLoadedUi(enabled) {
 }
 
 async function applyProject(parsed, fileName, opts = {}) {
+  if (parsed.musicXml) {
+    try {
+      parsed.musicXml = ensureKeyMetadata(parsed.musicXml);
+    } catch {
+      /* keep original XML if metadata stamp fails */
+    }
+  }
   project = wrapProject(parsed);
   sourceFileName = fileName || "";
   voiceColors.clear();
@@ -1146,36 +1282,38 @@ async function applyProject(parsed, fileName, opts = {}) {
   updateRemarksUi(parsed.musicXml || "");
 
   if (parsed.musicXml) {
-    setStatus("Rendering sheet music…");
-    try {
-      const meta = readMusicXmlMeta(parsed.musicXml);
-      sheet.showStaffLines = meta.staffLines !== 0;
+    showSheetLoadingPlaceholder(t("busyRenderingSheet"));
+    await withBusy(t("busyRenderingSheet"), async () => {
+      try {
+        const meta = readMusicXmlMeta(parsed.musicXml);
+        sheet.showStaffLines = meta.staffLines !== 0;
+        for (const voice of project.voices) {
+          const hex = voice.partId ? meta.voiceColors?.[voice.partId] : null;
+          if (hex) voiceColors.set(voice.id, hex);
+        }
+      } catch {
+        sheet.showStaffLines = true;
+      }
+      await sheet.load(parsed.musicXml, {
+        voices: project.voices,
+        isVoiceAudible: voiceAudible,
+        voiceGain,
+        isVoiceVisible: voiceVisible,
+        ticksPerBeat: project.ticksPerBeat,
+        onsetTicks: project.onsetTicks || [],
+      });
+      sheet.markSaved(parsed.musicXml);
+      const colorSeed = {};
       for (const voice of project.voices) {
-        const hex = voice.partId ? meta.voiceColors?.[voice.partId] : null;
-        if (hex) voiceColors.set(voice.id, hex);
+        if (voice.partId && voiceColors.has(voice.id)) {
+          colorSeed[voice.partId] = voiceColors.get(voice.id);
+        }
       }
-    } catch {
-      sheet.showStaffLines = true;
-    }
-    await sheet.load(parsed.musicXml, {
-      voices: project.voices,
-      isVoiceAudible: voiceAudible,
-      voiceGain,
-      isVoiceVisible: voiceVisible,
-      ticksPerBeat: project.ticksPerBeat,
-      onsetTicks: project.onsetTicks || [],
+      sheet.seedColors(colorSeed);
+      scoreView = "sheet";
+      updateSheetZoomLabel();
+      updateSheetToolbar();
     });
-    sheet.markSaved(parsed.musicXml);
-    const colorSeed = {};
-    for (const voice of project.voices) {
-      if (voice.partId && voiceColors.has(voice.id)) {
-        colorSeed[voice.partId] = voiceColors.get(voice.id);
-      }
-    }
-    sheet.seedColors(colorSeed);
-    scoreView = "sheet";
-    updateSheetZoomLabel();
-    updateSheetToolbar();
   } else {
     sheet.clear();
     els.sheetMusic.innerHTML =
@@ -1223,7 +1361,9 @@ async function applyProject(parsed, fileName, opts = {}) {
 }
 
 async function loadFile(file) {
-  setStatus(isMusicXmlName(file.name) ? "Reading MusicXML…" : "Reading MIDI…");
+  const reading = isMusicXmlName(file.name) ? t("busyReadingXml") : t("busyReadingMidi");
+  beginBusy(reading);
+  showSheetLoadingPlaceholder(reading);
   transport.stop();
   muted.clear();
   solo.clear();
@@ -1238,8 +1378,10 @@ async function loadFile(file) {
       parsed = parseMidi(buffer);
       if (!parsed.notes.length) throw new Error("No notes found in this MIDI file");
     }
+    endBusy();
     await applyProject(parsed, file.name);
   } catch (err) {
+    endBusy();
     project = null;
     sourceFileName = "";
     transport.setProject(null);
@@ -1311,7 +1453,9 @@ async function loadExample(ex) {
   const file = String(ex.file || "").replace(/^\/+/, "");
   if (!file) return;
   const url = `./examples/${file}`;
-  setStatus(`Loading ${ex.title || file}…`);
+  const loadingMsg = t("busyLoadingSong", { title: ex.title || file });
+  beginBusy(loadingMsg);
+  showSheetLoadingPlaceholder(loadingMsg);
   transport.stop();
   muted.clear();
   solo.clear();
@@ -1330,8 +1474,10 @@ async function loadExample(ex) {
       parsed = parseMidi(buffer);
       if (!parsed.notes.length) throw new Error("No notes found in this MIDI file");
     }
+    endBusy();
     await applyProject(parsed, displayName);
   } catch (err) {
+    endBusy();
     project = null;
     sourceFileName = "";
     transport.setProject(null);
@@ -1377,9 +1523,11 @@ els.fileInput.addEventListener("change", () => {
   if (file) void loadFile(file);
 });
 
-els.viewRollBtn.addEventListener("click", () => setScoreView("roll"));
+els.viewRollBtn.addEventListener("click", () => {
+  void setScoreView("roll");
+});
 els.viewSheetBtn.addEventListener("click", () => {
-  if (project?.musicXml) setScoreView("sheet");
+  if (project?.musicXml) void setScoreView("sheet");
 });
 
 els.sheetZoomOutBtn?.addEventListener("click", async () => {
@@ -1453,11 +1601,10 @@ els.remarksInput?.addEventListener("input", () => {
   updateSheetToolbar();
 });
 
-els.transposeDownBtn?.addEventListener("click", () => {
-  void transposeScore(-1);
-});
-els.transposeUpBtn?.addEventListener("click", () => {
-  void transposeScore(1);
+els.keyCenterSelect?.addEventListener("change", () => {
+  if (keyCenterSelectSilent) return;
+  const pc = Number(els.keyCenterSelect.value);
+  void modulateToKeyCenter(pc);
 });
 els.recordingEditBtn?.addEventListener("click", () => {
   void editRecordingUrl();
@@ -1488,8 +1635,9 @@ els.tuningToggle.addEventListener("change", () => {
 
 els.playBtn.addEventListener("click", async () => {
   if (!project) return;
+  const needsWarm = !synth.isReady;
   try {
-    setStatus("Loading soundfont (first time may take a few seconds)…");
+    if (needsWarm) beginBusy(t("busyLoadingSound"));
     await synth.ensure();
     transport.setAudioContext(synth.ctx);
     applyInstrumentSelection();
@@ -1498,9 +1646,11 @@ els.playBtn.addEventListener("click", async () => {
     sheet.enableFollowScroll?.();
     lastSheetOnsetTick = -1;
     transport.play();
-    setStatus("Playing — ←/→ previous/next onset");
+    setStatus(t("statusPlaying"));
   } catch (err) {
     setStatus(err?.message || String(err), true);
+  } finally {
+    if (needsWarm) endBusy();
   }
 });
 
@@ -1897,6 +2047,7 @@ onLangChange(() => {
   if (!project && els.fileName) els.fileName.textContent = t("noFile");
   updateTuningUi();
   updateScoreViewUi();
+  syncKeyCenterSelect();
   renderVoices();
   renderNotes();
   void updateSyncUi();
@@ -1937,3 +2088,28 @@ updateAccompUi();
 updateSyncUi();
 roll.draw();
 setStatus("Ready — open a MIDI or MusicXML file to begin.");
+
+/** Quietly preload OSMD + FluidSynth/soundfont so Play / sheet feel instant. */
+function scheduleResourceWarmup() {
+  const run = () => {
+    void (async () => {
+      try {
+        await sheet.ensure();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await synth.warm();
+      } catch {
+        /* ignore — Play will surface errors */
+      }
+    })();
+  };
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(run, { timeout: 1800 });
+  } else {
+    setTimeout(run, 400);
+  }
+}
+
+scheduleResourceWarmup();

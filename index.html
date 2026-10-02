@@ -10,6 +10,9 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="preload" href="./vendor/opensheetmusicdisplay.min.js" as="script" />
+  <link rel="preload" href="./vendor/libfluidsynth-2.4.6.js" as="script" />
+  <link rel="preload" href="./soundfonts/TimGM6mb.sf2" as="fetch" crossorigin />
 </head>
 <body>
   <div id="updateBanner" class="update-banner" hidden role="status" aria-live="polite">
@@ -84,7 +87,7 @@
       </label>
     </section>
 
-    <section class="panel score-panel" data-i18n-title="scoreTip">
+    <section class="panel score-panel" id="scorePanel" data-i18n-title="scoreTip">
       <div class="voices-head">
         <h2 id="scoreHeading" data-i18n="score">Score</h2>
         <div class="view-toggle" role="group" data-i18n-aria="scoreView">
@@ -98,10 +101,12 @@
           <button type="button" id="sheetPdfBtn" class="secondary sheet-pdf-btn" data-i18n-title="exportPdfTip" data-i18n-aria="exportPdf">
             PDF
           </button>
-          <span class="sheet-transpose" role="group" data-i18n-aria="transpose">
-            <button type="button" id="transposeDownBtn" class="secondary" data-i18n-title="transposeDownTip" data-i18n-aria="transposeDown">−</button>
-            <button type="button" id="transposeUpBtn" class="secondary" data-i18n-title="transposeUpTip" data-i18n-aria="transposeUp">+</button>
-          </span>
+          <label class="sheet-key-mod" data-i18n-title="modulateTip">
+            <span class="sheet-key-mod-label" data-i18n="modulate">Key</span>
+            <select id="keyCenterSelect" data-i18n-aria="modulate" disabled>
+              <option value="">—</option>
+            </select>
+          </label>
           <button type="button" id="sheetSaveBtn" class="sheet-save-btn" hidden data-i18n-title="saveScoreTip" data-i18n-aria="saveScore">
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
               <path fill="currentColor" d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/>
@@ -164,6 +169,12 @@
         role="slider"
         data-i18n-aria="rollAria"
       ></canvas>
+      <div id="busyOverlay" class="busy-overlay" hidden aria-live="polite" aria-atomic="true">
+        <div class="busy-card">
+          <span class="busy-spinner" aria-hidden="true"></span>
+          <span id="busyLabel" class="busy-label" data-i18n="busyWorking">Working…</span>
+        </div>
+      </div>
       <div id="remarksRow" class="remarks-row" hidden>
         <label for="remarksInput" data-i18n="remarks">Remarks</label>
         <textarea

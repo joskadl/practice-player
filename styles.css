@@ -281,6 +281,85 @@ body {
   border-radius: 10px;
 }
 
+.score-panel {
+  position: relative;
+}
+
+.busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--panel, #f7f4ef) 72%, transparent);
+  backdrop-filter: blur(2px);
+  border-radius: inherit;
+  pointer-events: all;
+}
+
+.busy-overlay[hidden] {
+  display: none !important;
+}
+
+.busy-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(20, 40, 30, 0.12);
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.busy-spinner {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: busy-spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+
+.busy-label {
+  font-weight: 560;
+  letter-spacing: 0.01em;
+}
+
+@keyframes busy-spin {
+  to { transform: rotate(360deg); }
+}
+
+body.is-busy {
+  cursor: progress;
+}
+
+body.is-busy .open-menu,
+body.is-busy .view-toggle,
+body.is-busy .sheet-key-mod,
+body.is-busy .voice-actions {
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+.status.is-busy::before {
+  content: "";
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.4rem;
+  vertical-align: -0.05rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: busy-spin 0.7s linear infinite;
+}
+
 .load-panel,
 .transport-panel {
   display: flex;
@@ -640,10 +719,28 @@ select {
   margin-left: 0.35rem;
 }
 
-.sheet-transpose {
+.sheet-key-mod {
   display: inline-flex;
-  gap: 0.15rem;
-  margin-left: 0.1rem;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.15rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.sheet-key-mod-label {
+  white-space: nowrap;
+}
+
+.sheet-key-mod select {
+  max-width: 9.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid var(--border, #c5d0cb);
+  background: var(--panel, #fff);
+  color: inherit;
 }
 
 .sheet-annot-bar {

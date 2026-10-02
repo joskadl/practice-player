@@ -42,7 +42,7 @@ Version: see `js/version.js` / `version.json` / footer.
 | Playback | Play / pause / stop, tempo %, seek, onset skip (←/→) |
 | Voices | Mute, solo, accompaniment level for non-soloed parts |
 | Views | Piano roll and sheet music (MusicXML) |
-| Edits | Title, stave/voice names, colours, staff lines on/off |
+| Edits | Title, stave/voice names, colours, staff lines on/off, key-centre modulation |
 | Export | Edited MusicXML; practice pack; **MP3** of current mute/solo mix |
 | Sync | Local IndexedDB + Undo; Pull/Push to GitHub or HTTP URL |
 | Offline | PWA install; service worker caches app + soundfont |
@@ -80,6 +80,7 @@ Files stay on your device unless you Export / Push a practice pack.
 
 - Toggle **Piano roll** / **Sheet music**.
 - **− / +** zoom.
+- **Key** dropdown: modulate the whole score to another key centre (same major/minor mode as the piece). The original home key is stored in the MusicXML (`practice-player-home-key`).
 - Click **title** or **stave labels** on the score (or voice names in Voices) to rename.
 - When there are unsaved score edits, a **save** icon appears → downloads edited MusicXML.
 - Closing the tab with unsaved edits (or unpushed sync changes) asks you to confirm.
