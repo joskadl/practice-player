@@ -819,11 +819,12 @@ select {
   visibility: visible !important;
 }
 
-/* Playhead bar — geometry is set in JS to match visible layers. */
+/* Playhead bar — geometry is set in JS to match the active system. */
 .sheet-music img.osmd-cursor,
 .sheet-music .osmd-cursor {
   max-height: none !important;
-  object-fit: fill;
+  max-width: none !important;
+  object-fit: fill !important;
   pointer-events: none;
 }
 

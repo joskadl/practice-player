@@ -267,7 +267,7 @@ Prefer **marker-only Standard export** from JustPlay for practice; this app synt
 
 ## Demo files
 
-Open → **Examples** loads from `examples/manifest.json`. Example **sources** are MuseScore `.mscz` files; the app loads a sibling pre-converted `.musicxml` (generated with the MuseScore CLI). Runtime webmscore conversion is only a fallback for user-opened `.mscz` files — it is unreliable for MuseScore 4 scores.
+Open → **Examples** loads from `examples/manifest.json`. Example **sources** are MuseScore `.mscz` files; the app loads a sibling pre-converted `.musicxml` (generated with the MuseScore CLI). After startup the app idle-warms examples: all are fetched/parsed, and a size-capped set is OSMD-pre-rendered offscreen so switching between them feels instant. Runtime webmscore conversion is only a fallback for user-opened `.mscz` files — it is unreliable for MuseScore 4 scores.
 
 ---
 

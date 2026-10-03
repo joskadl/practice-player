@@ -23,6 +23,8 @@ const ZOOM_MAX = 2.25;
 const ZOOM_DEFAULT = 0.55;
 /** Pixel gap between cursor bar and leftmost notehead under the cursor. */
 const CURSOR_HEAD_GAP_PX = 3;
+/** Minimum playhead bar width (px) — matches a typical notehead at default zoom. */
+const CURSOR_MIN_WIDTH_PX = 12;
 /** Max click distance (px) from a notehead to count as a seek target. */
 const SEEK_HIT_MAX_PX = 72;
 
@@ -116,6 +118,8 @@ export class SheetView {
     this._onsetTicks = [];
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
+    /** @type {{left:number, top:number, width:number, height:number}|null} */
+    this._lastCursorGeom = null;
     this.showStaffLines = true;
     /** @type {{ title: string, parts: Map<string,string>, staffLines: number, colors: Map<string,string> }|null} */
     this._pending = null;
@@ -271,6 +275,7 @@ export class SheetView {
     this._onsetTicks = [];
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
+    this._lastCursorGeom = null;
     this._pending = null;
     this._svgLayoutBackup = null;
     this.annotMode = null;
@@ -639,6 +644,92 @@ export class SheetView {
   }
 
   /**
+   * Instantly take ownership of an offscreen pre-rendered SheetView (example cache).
+   * Moves the OSMD DOM into this container and rebinds voice callbacks.
+   * @param {SheetView} donor
+   * @param {{
+   *   voices?: {id:string, channel:number, partId?:string}[],
+   *   isVoiceAudible?:(id:string)=>boolean,
+   *   voiceGain?: (id:string)=>number,
+   *   isVoiceVisible?: (id:string)=>boolean,
+   *   ticksPerBeat?: number,
+   *   onsetTicks?: number[],
+   *   playheadTick?: number,
+   * }} opts
+   * @returns {boolean}
+   */
+  adoptFrom(donor, opts = {}) {
+    if (!donor?.osmd || !donor.xml) return false;
+    this._cancelInlineEdit();
+    this._cancelAnnotInput();
+    if (this.osmd && this.osmd !== donor.osmd) {
+      try {
+        this.osmd.clear();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.container.innerHTML = "";
+
+    this.xml = donor.xml;
+    this.zoom = donor.zoom;
+    this.showStaffLines = donor.showStaffLines;
+    this.layers = { ...donor.layers };
+    this._lyricPartIndices = donor._lyricPartIndices;
+    this._timeline = Array.isArray(donor._timeline) ? donor._timeline.slice() : [];
+    this._lastCursorGeom = null;
+    this._pending = null;
+    this._svgLayoutBackup = null;
+    this.annotMode = null;
+    this._setDirty(false);
+
+    this._isVoiceAudible = opts.isVoiceAudible || (() => true);
+    this._voiceGain =
+      opts.voiceGain || ((id) => (this._isVoiceAudible(id) ? 1 : 0));
+    this._isVoiceVisible = opts.isVoiceVisible || (() => true);
+    this.ticksPerBeat = Math.max(1, opts.ticksPerBeat || donor.ticksPerBeat || 480);
+    this._onsetTicks = Array.isArray(opts.onsetTicks)
+      ? opts.onsetTicks.slice().sort((a, b) => a - b)
+      : Array.isArray(donor._onsetTicks)
+        ? donor._onsetTicks.slice()
+        : [];
+
+    while (donor.container.firstChild) {
+      this.container.appendChild(donor.container.firstChild);
+    }
+    this.osmd = donor.osmd;
+    donor.osmd = null;
+    donor._ready = false;
+    try {
+      // OSMD keeps a container reference for later render/cursor updates.
+      this.osmd.container = this.container;
+      if ("containerElement" in this.osmd) this.osmd.containerElement = this.container;
+    } catch {
+      /* ignore */
+    }
+
+    this._mapInstruments(opts.voices || donor.instrumentVoices || []);
+    this.applyVoiceVisibility();
+    this._finishAnnotationPresentation();
+    if (!this._timeline.length) this._buildTimeline();
+    this._bindInlineEditors();
+    this._ready = true;
+    this._cursorIdx = 0;
+    this._lastPlayheadTick = opts.playheadTick ?? 0;
+    this._applyCursorStyle();
+    this._ensureCursorVisible();
+    this.setPlayhead(this._lastPlayheadTick, { scroll: false });
+    if (typeof this.onLayersChange === "function") this.onLayersChange({ ...this.layers });
+
+    try {
+      donor.clear();
+    } catch {
+      /* ignore */
+    }
+    return true;
+  }
+
+  /**
    * Reload MusicXML while preserving zoom / playhead / staff-line preference.
    */
   async reloadXml(xmlText, opts = {}) {
@@ -939,6 +1030,15 @@ export class SheetView {
     this._nudgeCursorToNoteheads();
     this._ensureCursorVisible();
     if (wantScroll) this._maybeAutoScroll();
+    // Auto-scroll / OSMD can rewrite the <img> size after update — re-assert geometry.
+    requestAnimationFrame(() => {
+      try {
+        this._nudgeCursorToNoteheads();
+        this._ensureCursorVisible();
+      } catch {
+        /* ignore */
+      }
+    });
   }
 
   /** Call when playback starts so the sheet follows the cursor again. */
@@ -1219,7 +1319,9 @@ export class SheetView {
           matched.push(best.g);
         }
       }
-      if (matched.length) return matched;
+      // Only accept a full-system match. A partial match (e.g. one staff while
+      // calibration drifts mid-playback) makes the playhead short/thin.
+      if (matched.length >= ordered.length) return matched;
     }
 
     const perSystem = this._stavesPerSystem();
@@ -1255,7 +1357,7 @@ export class SheetView {
    * Bounds for the playhead: X at active noteheads; Y from the top staff line of
    * the top staff to the bottom staff line of the bottom staff in the current
    * system only (never across following systems / noteheads alone).
-   * @returns {{left:number, top:number, bottom:number}|null} container-content coords
+   * @returns {{left:number, top:number, bottom:number, width:number}|null} container-content coords
    */
   _cursorAlignBounds() {
     const cursor = this.osmd?.cursor;
@@ -1265,6 +1367,7 @@ export class SheetView {
     const scrollT = this.container.scrollTop;
 
     let minLeft = null;
+    let maxNoteWidth = 0;
     try {
       const gnotes =
         typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
@@ -1284,11 +1387,14 @@ export class SheetView {
         if (!(r.width > 0 || r.height > 0)) continue;
         const left = r.left - host.left + scrollL;
         minLeft = minLeft == null ? left : Math.min(minLeft, left);
+        // Note SVG groups include stems; prefer a notehead-ish width.
+        maxNoteWidth = Math.max(maxNoteWidth, Math.min(r.width, Math.max(10, r.height * 1.15)));
       }
     } catch {
       return null;
     }
     if (minLeft == null) return null;
+    const width = Math.max(CURSOR_MIN_WIDTH_PX, maxNoteWidth || CURSOR_MIN_WIDTH_PX);
 
     // Prefer painted staff-line DOM extents when we have a full system —
     // OSMD AbsolutePosition calibration can under-reach the bass staff.
@@ -1311,16 +1417,19 @@ export class SheetView {
       domTop = domTop == null ? top : Math.min(domTop, top);
       domBottom = domBottom == null ? bottom : Math.max(domBottom, bottom);
     }
+    // Require a full system (or all staffs we found if the score has fewer).
+    const needStaffs = Math.max(1, perSystem);
     if (
       domTop != null
       && domBottom != null
       && domBottom > domTop
-      && systemStaffs.length >= Math.min(Math.max(1, perSystem), 2)
+      && systemStaffs.length >= needStaffs
     ) {
       return {
         left: minLeft,
         top: Math.max(0, domTop),
         bottom: domBottom,
+        width,
       };
     }
 
@@ -1330,43 +1439,61 @@ export class SheetView {
         left: minLeft,
         top: Math.max(0, osmdBand.top),
         bottom: osmdBand.bottom,
+        width,
       };
     }
 
-    let minTop = domTop;
-    let maxBottom = domBottom;
-
-    if (minTop == null || maxBottom == null || !(maxBottom > minTop)) {
-      try {
-        const gnotes =
-          typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
-        for (const gn of gnotes) {
-          const src = gn?.sourceNote || gn?.getSourceNote?.();
-          const isRest =
-            src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
-          if (isRest) continue;
-          const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
-          if (!svgEl) continue;
-          const r = svgEl.getBoundingClientRect();
-          if (!(r.width > 0 || r.height > 0)) continue;
-          const top = r.top - host.top + scrollT;
-          const bottom = r.bottom - host.top + scrollT;
-          minTop = minTop == null ? top : Math.min(minTop, top);
-          maxBottom = maxBottom == null ? bottom : Math.max(maxBottom, bottom);
-        }
-      } catch {
-        /* ignore */
-      }
+    // Last resort: still prefer whatever staff DOM we have over single noteheads
+    // (notehead-only height is the short thin bar users see during playback).
+    if (domTop != null && domBottom != null && domBottom > domTop) {
+      return {
+        left: minLeft,
+        top: Math.max(0, domTop),
+        bottom: domBottom,
+        width,
+      };
     }
 
-    if (minTop == null || maxBottom == null || !(maxBottom > minTop)) {
-      return { left: minLeft, top: 0, bottom: 40 };
+    // Keep prior full-system geometry rather than collapsing to one notehead.
+    if (this._lastCursorGeom?.height > 40) {
+      return {
+        left: minLeft,
+        top: this._lastCursorGeom.top,
+        bottom: this._lastCursorGeom.top + this._lastCursorGeom.height,
+        width: Math.max(width, this._lastCursorGeom.width || 0),
+      };
     }
-    return {
-      left: minLeft,
-      top: Math.max(0, minTop),
-      bottom: maxBottom,
-    };
+
+    return null;
+  }
+
+  /**
+   * Apply left/top/width/height to the OSMD cursor element, overriding img attrs
+   * that cursor.update() may have just written.
+   * @param {{left:number, top:number, width:number, height:number}} geom
+   */
+  _applyCursorGeometry(geom) {
+    const el = this.osmd?.cursor?.cursorElement;
+    if (!el || !geom) return;
+    const left = Math.max(0, geom.left);
+    const top = Math.max(0, geom.top);
+    const width = Math.max(CURSOR_MIN_WIDTH_PX, geom.width || CURSOR_MIN_WIDTH_PX);
+    const height = Math.max(16, geom.height || 16);
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.width = `${width}px`;
+    el.style.height = `${height}px`;
+    el.style.maxHeight = "none";
+    el.style.maxWidth = "none";
+    el.style.objectFit = "fill";
+    // OSMD paints an <img> and sets width/height attributes — clear so CSS wins.
+    if (el.tagName === "IMG" || el.tagName === "img") {
+      el.removeAttribute("width");
+      el.removeAttribute("height");
+      el.width = width;
+      el.height = height;
+    }
+    this._lastCursorGeom = { left, top, width, height };
   }
 
   /**
@@ -1377,14 +1504,23 @@ export class SheetView {
     const el = this.osmd?.cursor?.cursorElement;
     if (!el) return;
     const bounds = this._cursorAlignBounds();
-    if (!bounds) return;
-    const height = Math.max(16, bounds.bottom - bounds.top);
-    el.style.left = `${Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX)}px`;
-    el.style.top = `${bounds.top}px`;
-    el.style.height = `${height}px`;
-    el.style.width = el.style.width || "2px";
-    el.style.maxHeight = "none";
-    el.style.objectFit = "fill";
+    if (!bounds) {
+      // cursor.update() often resets to a short thin bar — restore last good size.
+      if (this._lastCursorGeom) {
+        const left = Number.parseFloat(el.style.left) || this._lastCursorGeom.left;
+        this._applyCursorGeometry({
+          ...this._lastCursorGeom,
+          left,
+        });
+      }
+      return;
+    }
+    this._applyCursorGeometry({
+      left: Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX),
+      top: bounds.top,
+      width: bounds.width,
+      height: Math.max(16, bounds.bottom - bounds.top),
+    });
   }
 
   /**

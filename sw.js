@@ -6,7 +6,7 @@
  * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v49";
+const CACHE = "midi-practice-player-v50";
 
 const PRECACHE = [
   "./",
@@ -29,6 +29,7 @@ const PRECACHE = [
   "./js/audio-export.js",
   "./js/piano-roll.js",
   "./js/sheet-view.js",
+  "./js/example-prerender.js",
   "./js/version.js",
   "./js/app-update.js",
   "./js/practice-pack.js",
@@ -55,14 +56,15 @@ const PRECACHE = [
   "./examples/gabriels-message-satb.musicxml",
 ];
 
-/** True for files that must prefer the network (app code / examples / version). */
+/** True for files that must prefer the network (app shell / catalog / version). */
 function isNetworkFirst(url) {
   const path = url.pathname;
   if (path.endsWith("/") || path.endsWith("/index.html")) return true;
   if (path.endsWith(".html") || path.endsWith(".css") || path.endsWith(".js")) return true;
   if (path.endsWith(".webmanifest") || path.endsWith("manifest.webmanifest")) return true;
   if (path.endsWith("/version.json") || path.endsWith("version.json")) return true;
-  if (path.includes("/examples/")) return true;
+  // Catalog stays network-first; MusicXML bodies are cache-first (precache + warm).
+  if (path.includes("/examples/") && path.endsWith("manifest.json")) return true;
   // Never cache the service worker script itself via this handler.
   if (path.endsWith("/sw.js")) return true;
   return false;

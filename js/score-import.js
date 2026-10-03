@@ -209,12 +209,14 @@ export async function readScoreFileAsMusicXml(file, opts = {}) {
 export async function fetchExampleAsMusicXml(file, opts = {}) {
   const name = String(file || "").replace(/^\/+/, "");
   if (!name) throw new Error("Missing example file");
+  // Prefer SW/browser cache for snappy example loads (artifacts are versioned with SW CACHE).
+  const cacheMode = opts.preferCache ? "force-cache" : "no-store";
 
   if (/\.(mscz|mscx)$/i.test(name)) {
     const sibling = musicXmlSiblingName(name);
     try {
       opts.onProgress?.("Loading score…");
-      const cached = await fetch(`./examples/${sibling}`, { cache: "no-store" });
+      const cached = await fetch(`./examples/${sibling}`, { cache: cacheMode });
       if (cached.ok) {
         const text = await cached.text();
         if (
@@ -229,7 +231,7 @@ export async function fetchExampleAsMusicXml(file, opts = {}) {
     }
 
     opts.onProgress?.("Converting MuseScore file…");
-    const res = await fetch(`./examples/${name}`, { cache: "no-store" });
+    const res = await fetch(`./examples/${name}`, { cache: cacheMode });
     if (!res.ok) throw new Error(`Could not load ${name}`);
     const bytes = new Uint8Array(await res.arrayBuffer());
     return musicXmlFromMscz(bytes, name);
@@ -237,13 +239,13 @@ export async function fetchExampleAsMusicXml(file, opts = {}) {
 
   if (/\.mxl$/i.test(name)) {
     opts.onProgress?.("Unpacking MusicXML…");
-    const res = await fetch(`./examples/${name}`, { cache: "no-store" });
+    const res = await fetch(`./examples/${name}`, { cache: cacheMode });
     if (!res.ok) throw new Error(`Could not load ${name}`);
     const bytes = new Uint8Array(await res.arrayBuffer());
     return musicXmlFromMxl(bytes);
   }
 
-  const res = await fetch(`./examples/${name}`, { cache: "no-store" });
+  const res = await fetch(`./examples/${name}`, { cache: cacheMode });
   if (!res.ok) throw new Error(`Could not load ${name}`);
   return res.text();
 }

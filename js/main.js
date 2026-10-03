@@ -32,6 +32,7 @@ import { ChoirSynth } from "./synth.js";
 import { Transport } from "./transport.js";
 import { PianoRoll, channelColor } from "./piano-roll.js";
 import { SheetView } from "./sheet-view.js";
+import { ExamplePrerenderCache } from "./example-prerender.js";
 import { APP_VERSION_LABEL } from "./version.js";
 import {
   checkForAppUpdate,
@@ -158,6 +159,20 @@ const els = {
 
 const synth = new ChoirSynth();
 const sheet = new SheetView(els.sheetMusic);
+
+const exampleCache = new ExamplePrerenderCache({
+  getLayoutWidth: () => {
+    const w = els.sheetMusic?.clientWidth || 0;
+    if (w > 32) return w;
+    return (
+      els.sheetMusic?.parentElement?.clientWidth
+      || els.scorePanel?.clientWidth
+      || Math.min(720, window.innerWidth - 32)
+      || 480
+    );
+  },
+  getZoom: () => sheet.getZoom(),
+});
 const session = new ProjectSession();
 /** @type {ReturnType<typeof defaultSyncSettings>} */
 let syncSettings = defaultSyncSettings();
@@ -171,6 +186,8 @@ sheet.onDirtyChange = (dirty) => {
 };
 sheet.onZoomChange = () => {
   updateSheetZoomLabel();
+  // Pre-renders are zoom-specific — rebuild offscreen copies in idle time.
+  exampleCache.scheduleRewarm();
 };
 sheet.onPartRename = (partId, name) => {
   if (!project?.voices) return;
@@ -1303,9 +1320,13 @@ async function applyProject(parsed, fileName, opts = {}) {
     // yields width 0, which leaves only the green cursor visible on first load.
     scoreView = "sheet";
     updateScoreViewUi();
-    showSheetLoadingPlaceholder(t("busyRenderingSheet"));
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    await withBusy(t("busyRenderingSheet"), async () => {
+    const adoptSheet = opts.adoptSheet || null;
+    if (!adoptSheet) {
+      showSheetLoadingPlaceholder(t("busyRenderingSheet"));
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+    const busyLabel = adoptSheet ? t("busyLoadingSong", { title: fileName }) : t("busyRenderingSheet");
+    await withBusy(busyLabel, async () => {
       try {
         const meta = readMusicXmlMeta(parsed.musicXml);
         sheet.showStaffLines = meta.staffLines !== 0;
@@ -1316,14 +1337,26 @@ async function applyProject(parsed, fileName, opts = {}) {
       } catch {
         sheet.showStaffLines = true;
       }
-      await sheet.load(parsed.musicXml, {
+      const sheetOpts = {
         voices: project.voices,
         isVoiceAudible: voiceAudible,
         voiceGain,
         isVoiceVisible: voiceVisible,
         ticksPerBeat: project.ticksPerBeat,
         onsetTicks: project.onsetTicks || [],
-      });
+      };
+      let adopted = false;
+      if (adoptSheet?.view) {
+        adopted = sheet.adoptFrom(adoptSheet.view, sheetOpts);
+        try {
+          adoptSheet.slot?.remove();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!adopted) {
+        await sheet.load(parsed.musicXml, sheetOpts);
+      }
       sheet.markSaved(parsed.musicXml);
       const colorSeed = {};
       for (const voice of project.voices) {
@@ -1487,36 +1520,63 @@ async function populateExamplesMenu() {
 async function loadExample(ex) {
   const file = String(ex.file || "").replace(/^\/+/, "");
   if (!file) return;
-  const loadingMsg = t("busyLoadingSong", { title: ex.title || file });
+  const displayName = ex.title || file;
+  const loadingMsg = t("busyLoadingSong", { title: displayName });
+  const layoutWidth = exampleCache.getLayoutWidth();
+  const preRendered = isMusicXmlName(file)
+    ? exampleCache.takeRendered(ex, { width: layoutWidth, zoom: sheet.getZoom() })
+    : null;
+  const preParsed = !preRendered && isMusicXmlName(file) ? exampleCache.getParsed(ex) : null;
+
   beginBusy(loadingMsg);
-  showSheetLoadingPlaceholder(loadingMsg);
+  // Keep the current sheet visible when we can adopt a pre-render (no flash).
+  if (!preRendered) showSheetLoadingPlaceholder(loadingMsg);
   transport.stop();
   muted.clear();
   solo.clear();
   hiddenVoices.clear();
   try {
     let parsed;
-    const displayName = ex.title || file;
+    /** @type {object|null} */
+    let adoptSheet = null;
     if (isMusicXmlName(file)) {
-      let xmlText = await fetchExampleAsMusicXml(file, {
-        onProgress: (msg) => {
-          updateBusy(msg);
-          showSheetLoadingPlaceholder(msg);
-        },
-      });
-      xmlText = stripPersonalNames(xmlText);
-      parsed = parseMusicXml(xmlText);
+      if (preRendered?.data?.parsed) {
+        parsed = preRendered.data.parsed;
+        adoptSheet = preRendered;
+      } else if (preParsed?.parsed) {
+        parsed = preParsed.parsed;
+      } else {
+        let xmlText = await fetchExampleAsMusicXml(file, {
+          preferCache: true,
+          onProgress: (msg) => {
+            updateBusy(msg);
+            showSheetLoadingPlaceholder(msg);
+          },
+        });
+        xmlText = stripPersonalNames(xmlText);
+        parsed = parseMusicXml(xmlText);
+      }
     } else {
-      const res = await fetch(`./examples/${file}`, { cache: "no-store" });
+      const res = await fetch(`./examples/${file}`, { cache: "force-cache" });
       if (!res.ok) throw new Error(`Could not load ${file}`);
       const buffer = await res.arrayBuffer();
       parsed = parseMidi(buffer);
       if (!parsed.notes.length) throw new Error("No notes found in this MIDI file");
     }
     endBusy();
-    await applyProject(parsed, displayName);
+    await applyProject(parsed, displayName, { adoptSheet });
+    // Refill the offscreen slot we just consumed.
+    if (isMusicXmlName(file)) exampleCache.scheduleOne(ex);
   } catch (err) {
     endBusy();
+    if (preRendered) {
+      try {
+        preRendered.view?.clear();
+        preRendered.slot?.remove();
+      } catch {
+        /* ignore */
+      }
+    }
     project = null;
     sourceFileName = "";
     transport.setProject(null);
@@ -2128,7 +2188,7 @@ updateSyncUi();
 roll.draw();
 setStatus("Ready — open a MIDI or MusicXML file to begin.");
 
-/** Quietly preload OSMD + FluidSynth/soundfont so Play / sheet feel instant. */
+/** Quietly preload OSMD + FluidSynth/soundfont + example sheet pre-renders. */
 function scheduleResourceWarmup() {
   const run = () => {
     void (async () => {
@@ -2142,6 +2202,12 @@ function scheduleResourceWarmup() {
       } catch {
         /* ignore — Play will surface errors */
       }
+      try {
+        const examples = await fetchExamplesCatalog();
+        await exampleCache.warm(examples);
+      } catch {
+        /* examples optional at startup */
+      }
     })();
   };
   if (typeof requestIdleCallback === "function") {
@@ -2152,3 +2218,12 @@ function scheduleResourceWarmup() {
 }
 
 scheduleResourceWarmup();
+
+// Pre-renders are width-specific; rebuild after significant resizes.
+let _exampleResizeTimer = 0;
+window.addEventListener("resize", () => {
+  window.clearTimeout(_exampleResizeTimer);
+  _exampleResizeTimer = window.setTimeout(() => {
+    exampleCache.scheduleRewarm();
+  }, 400);
+});
