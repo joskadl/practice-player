@@ -883,6 +883,8 @@ select {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.5rem;
+  /* Pan/scroll OK; pinch is handled in JS as sheet zoom (not page zoom). */
+  touch-action: pan-x pan-y;
 }
 
 .sheet-music-frame {

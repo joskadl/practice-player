@@ -87,6 +87,13 @@ function iteratorEnded(it) {
   return !!(it?.endReached || it?.EndReached);
 }
 
+function pinchDistance(touches) {
+  const a = touches[0];
+  const b = touches[1];
+  if (!a || !b) return 0;
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
 export class SheetView {
   /**
    * @param {HTMLElement} container
@@ -127,6 +134,13 @@ export class SheetView {
     this.onAnnotModeChange = null;
     /** @type {((voice:{id:string,channel?:number,partId?:string})=>string)|null} */
     this.voiceColor = null;
+    /** @type {((zoom:number)=>void)|null} */
+    this.onZoomChange = null;
+    /** @type {{mode:"pinch"|"gesture", startZoom:number, startDist?:number}|null} */
+    this._zoomGesture = null;
+    this._zoomRenderBusy = false;
+    this._zoomRenderPending = false;
+    this._zoomRenderScroll = true;
     this._editInput = null;
     this._editCtx = null;
     /** @type {HTMLInputElement|null} */
@@ -161,6 +175,81 @@ export class SheetView {
     };
     this.container.addEventListener("scroll", this._onUserScroll, { passive: true });
     this.container.addEventListener("click", (ev) => this._onContainerClick(ev));
+    this._bindZoomGestures();
+  }
+
+  /** Pinch / ctrl+wheel / trackpad gestures → same OSMD zoom as the +/- buttons. */
+  _bindZoomGestures() {
+    const el = this.container;
+
+    el.addEventListener(
+      "wheel",
+      (ev) => {
+        // Trackpad pinch and ctrl/cmd+wheel; ignore while a Safari gesture* pinch is active.
+        if (!this._ready || this._zoomGesture?.mode === "gesture") return;
+        if (!ev.ctrlKey && !ev.metaKey) return;
+        ev.preventDefault();
+        const unit =
+          ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? el.clientHeight || 80 : 1;
+        const next = this.zoom * Math.exp(-ev.deltaY * unit * 0.0018);
+        void this.setZoom(next);
+      },
+      { passive: false },
+    );
+
+    el.addEventListener(
+      "touchstart",
+      (ev) => {
+        if (!this._ready || ev.touches.length !== 2) return;
+        const dist = pinchDistance(ev.touches);
+        if (dist < 8) return;
+        this._zoomGesture = {
+          mode: "pinch",
+          startZoom: this.zoom,
+          startDist: dist,
+        };
+      },
+      { passive: true },
+    );
+
+    el.addEventListener(
+      "touchmove",
+      (ev) => {
+        if (!this._zoomGesture || this._zoomGesture.mode !== "pinch") return;
+        if (ev.touches.length !== 2) return;
+        ev.preventDefault();
+        const dist = pinchDistance(ev.touches);
+        if (dist < 8 || !this._zoomGesture.startDist) return;
+        const next = this._zoomGesture.startZoom * (dist / this._zoomGesture.startDist);
+        void this.setZoom(next);
+      },
+      { passive: false },
+    );
+
+    const endTouchPinch = () => {
+      if (this._zoomGesture?.mode === "pinch") this._zoomGesture = null;
+    };
+    el.addEventListener("touchend", endTouchPinch);
+    el.addEventListener("touchcancel", endTouchPinch);
+
+    // Safari (macOS) trackpad pinch — non-standard GestureEvent.
+    el.addEventListener("gesturestart", (ev) => {
+      if (!this._ready) return;
+      ev.preventDefault();
+      this._zoomGesture = { mode: "gesture", startZoom: this.zoom };
+    });
+    el.addEventListener("gesturechange", (ev) => {
+      if (!this._zoomGesture || this._zoomGesture.mode !== "gesture") return;
+      ev.preventDefault();
+      const scale = Number(ev.scale);
+      if (!Number.isFinite(scale) || scale <= 0) return;
+      void this.setZoom(this._zoomGesture.startZoom * scale);
+    });
+    el.addEventListener("gestureend", (ev) => {
+      if (this._zoomGesture?.mode !== "gesture") return;
+      ev.preventDefault();
+      this._zoomGesture = null;
+    });
   }
 
   async ensure() {
@@ -310,18 +399,23 @@ export class SheetView {
 
   /**
    * Make the host measurable for OSMD layout (hidden → clientWidth 0).
+   * Also temporarily reveals a hidden `.sheet-stage` ancestor.
    * @returns {() => void}
    */
   _prepareLayoutSurface() {
     const el = this.container;
+    const stage = typeof el.closest === "function" ? el.closest(".sheet-stage") : null;
     const prevHidden = el.hidden;
+    const prevStageHidden = stage ? stage.hidden : false;
     const prevVisibility = el.style.visibility;
     const prevPosition = el.style.position;
     const prevHeight = el.style.height;
     const prevOverflow = el.style.overflow;
 
     el.hidden = false;
-    if (prevHidden) {
+    if (stage) stage.hidden = false;
+    // Off-screen measure only when we had to force-show a previously hidden host.
+    if (prevHidden || prevStageHidden) {
       el.style.visibility = "hidden";
       el.style.position = "absolute";
       el.style.height = "auto";
@@ -332,8 +426,7 @@ export class SheetView {
     }
 
     return () => {
-      if (prevHidden) {
-        el.hidden = true;
+      if (prevHidden || prevStageHidden) {
         el.style.visibility = prevVisibility;
         el.style.position = prevPosition;
         el.style.height = prevHeight;
@@ -342,16 +435,34 @@ export class SheetView {
         el.style.right = "";
         el.style.width = "";
       }
+      if (prevHidden) el.hidden = true;
+      // If the stage was hidden only for measuring, leave it as the caller set it
+      // after load (applyProject / setScoreView show it for real).
+      if (stage && prevStageHidden) stage.hidden = true;
     };
   }
 
   async _waitForWidth() {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 20; i++) {
       await nextFrame();
       if (this.container.clientWidth > 32) return this.container.clientWidth;
     }
     const parentW = this.container.parentElement?.clientWidth || 0;
     return Math.max(280, parentW || this.container.clientWidth || 480);
+  }
+
+  /**
+   * True when OSMD produced a sheet SVG with a measurable on-screen size.
+   * False on the classic first-load failure (cursor only, empty/zero-size SVG).
+   */
+  hasVisibleScore() {
+    if (!this._ready || !this.osmd) return false;
+    const svg = this.container.querySelector("svg");
+    if (!svg) return false;
+    const rect = svg.getBoundingClientRect();
+    const h = rect.height || svg.clientHeight || 0;
+    const w = rect.width || svg.clientWidth || 0;
+    return w > 32 && h > 16;
   }
 
   _applyCursorStyle() {
@@ -547,6 +658,10 @@ export class SheetView {
   async revealAndRender() {
     if (!this.osmd || !this.xml) return;
     this.container.hidden = false;
+    const stage = typeof this.container.closest === "function"
+      ? this.container.closest(".sheet-stage")
+      : null;
+    if (stage) stage.hidden = false;
     const width = await this._waitForWidth();
     this._configurePageWidth(width);
     await this._rerenderKeepPlayhead({ scroll: true });
@@ -558,8 +673,28 @@ export class SheetView {
    */
   async setZoom(zoom, opts = {}) {
     this.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(zoom) || ZOOM_DEFAULT));
+    try {
+      this.onZoomChange?.(this.zoom);
+    } catch {
+      /* ignore */
+    }
     if (!this.osmd || !this._ready) return this.zoom;
-    await this._rerenderKeepPlayhead({ scroll: opts.scroll !== false });
+
+    // Coalesce rapid gesture updates onto one in-flight OSMD render.
+    this._zoomRenderScroll = opts.scroll !== false;
+    if (this._zoomRenderBusy) {
+      this._zoomRenderPending = true;
+      return this.zoom;
+    }
+    this._zoomRenderBusy = true;
+    try {
+      do {
+        this._zoomRenderPending = false;
+        await this._rerenderKeepPlayhead({ scroll: this._zoomRenderScroll });
+      } while (this._zoomRenderPending);
+    } finally {
+      this._zoomRenderBusy = false;
+    }
     return this.zoom;
   }
 
