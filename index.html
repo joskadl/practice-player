@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#2f5d50" />
-  <meta name="description" content="Rehearse MIDI and MusicXML with mute/solo, sheet music, and a built-in choir soundfont." />
+  <meta name="description" content="Rehearse MIDI, MusicXML, and MuseScore files with mute/solo, sheet music, and a built-in choir soundfont." />
   <title>MIDI Practice Player</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
@@ -43,7 +43,7 @@
           <div class="open-menu-heading" data-i18n="examples">Examples</div>
           <div id="examplesList" class="open-menu-examples"></div>
         </div>
-        <input id="fileInput" type="file" accept=".mid,.midi,.musicxml,.xml,audio/midi,application/vnd.recordare.musicxml+xml,application/xml,text/xml" hidden />
+        <input id="fileInput" type="file" accept=".mid,.midi,.musicxml,.xml,.mxl,.mscz,.mscx,audio/midi,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,application/xml,text/xml" hidden />
       </div>
       <span id="fileName" class="file-name">No file loaded</span>
       <a id="recordingLink" class="recording-link" hidden rel="noopener noreferrer" target="_blank" data-i18n-title="recordingLinkTip"></a>

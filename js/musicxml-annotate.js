@@ -3,7 +3,7 @@
  * Layer visibility prefs live in identification/miscellaneous.
  */
 
-const LAYERS_FIELD = "practice-player-layers";
+import { LAYERS_FIELD } from "./score-meta.js";
 /** Distinct colour OSMD paints on practice text notes so we can CSS-tag them. */
 export const PRACTICE_NOTE_COLOR = "#1a6b5c";
 

@@ -6,7 +6,7 @@
  * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v46";
+const CACHE = "midi-practice-player-v47";
 
 const PRECACHE = [
   "./",
@@ -20,6 +20,8 @@ const PRECACHE = [
   "./js/musicxml-parse.js",
   "./js/musicxml-edit.js",
   "./js/musicxml-annotate.js",
+  "./js/score-import.js",
+  "./js/score-meta.js",
   "./js/sheet-pdf-export.js",
   "./js/ji-retune.js",
   "./js/transport.js",
@@ -33,6 +35,7 @@ const PRECACHE = [
   "./js/local-store.js",
   "./js/sync-remote.js",
   "./js/project-session.js",
+  "./vendor/fflate.js",
   "./vendor/libfluidsynth-2.4.6.js",
   "./vendor/js-synthesizer.min.js",
   "./vendor/js-synthesizer.worklet.min.js",
@@ -42,6 +45,8 @@ const PRECACHE = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./examples/manifest.json",
+  // MuseScore sources + precomputed MusicXML (fast / offline example loads)
+  "./examples/stille-nacht.mscz",
   "./examples/stille-nacht.musicxml",
   "./examples/blue-christmas-for-barbershopers.musicxml",
   "./examples/gaudete-christus-est-natus.musicxml",

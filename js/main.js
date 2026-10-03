@@ -5,7 +5,12 @@ import {
   prevOnsetTick,
   nextOnsetTick,
 } from "./midi-parse.js";
-import { parseMusicXml, readMusicXmlFile } from "./musicxml-parse.js";
+import { parseMusicXml } from "./musicxml-parse.js";
+import {
+  fetchExampleAsMusicXml,
+  isScoreXmlName,
+  readScoreFileAsMusicXml,
+} from "./score-import.js";
 import {
   readMusicXmlMeta,
   downloadMusicXml,
@@ -163,6 +168,9 @@ sheet.onDirtyChange = (dirty) => {
   if (els.sheetSaveBtn) els.sheetSaveBtn.hidden = !dirty;
   void persistSessionSnapshot();
   updateSyncUi();
+};
+sheet.onZoomChange = () => {
+  updateSheetZoomLabel();
 };
 sheet.onPartRename = (partId, name) => {
   if (!project?.voices) return;
@@ -464,6 +472,16 @@ function beginBusy(message) {
 
 function endBusy() {
   busyStack.pop();
+  applyBusyUi();
+}
+
+/** Update the current busy label without nesting another busy frame. */
+function updateBusy(message) {
+  if (!busyStack.length) {
+    beginBusy(message);
+    return;
+  }
+  busyStack[busyStack.length - 1] = message || t("busyWorking");
   applyBusyUi();
 }
 
@@ -905,8 +923,7 @@ function wrapProject(parsed) {
 }
 
 function isMusicXmlName(name) {
-  const n = (name || "").toLowerCase();
-  return n.endsWith(".musicxml") || n.endsWith(".xml") || n.endsWith(".mxl");
+  return isScoreXmlName(name);
 }
 
 function updateScoreViewUi() {
@@ -1282,7 +1299,12 @@ async function applyProject(parsed, fileName, opts = {}) {
   updateRemarksUi(parsed.musicXml || "");
 
   if (parsed.musicXml) {
+    // Show the sheet stage before OSMD measures/renders — a hidden parent
+    // yields width 0, which leaves only the green cursor visible on first load.
+    scoreView = "sheet";
+    updateScoreViewUi();
     showSheetLoadingPlaceholder(t("busyRenderingSheet"));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     await withBusy(t("busyRenderingSheet"), async () => {
       try {
         const meta = readMusicXmlMeta(parsed.musicXml);
@@ -1310,9 +1332,13 @@ async function applyProject(parsed, fileName, opts = {}) {
         }
       }
       sheet.seedColors(colorSeed);
-      scoreView = "sheet";
+      // Reflow once the stage is in the visible layout tree (covers first-load races).
+      if (!sheet.hasVisibleScore()) {
+        await sheet.revealAndRender();
+      }
       updateSheetZoomLabel();
       updateSheetToolbar();
+      syncSheetPlayhead(transport.playheadTick, { scroll: true });
     });
   } else {
     sheet.clear();
@@ -1361,7 +1387,11 @@ async function applyProject(parsed, fileName, opts = {}) {
 }
 
 async function loadFile(file) {
-  const reading = isMusicXmlName(file.name) ? t("busyReadingXml") : t("busyReadingMidi");
+  const reading = isMusicXmlName(file.name)
+    ? (/\.mscz$/i.test(file.name) || /\.mscx$/i.test(file.name)
+      ? t("busyConvertingMuseScore")
+      : t("busyReadingXml"))
+    : t("busyReadingMidi");
   beginBusy(reading);
   showSheetLoadingPlaceholder(reading);
   transport.stop();
@@ -1371,7 +1401,12 @@ async function loadFile(file) {
   try {
     let parsed;
     if (isMusicXmlName(file.name)) {
-      const xmlText = await readMusicXmlFile(file);
+      const xmlText = await readScoreFileAsMusicXml(file, {
+        onProgress: (msg) => {
+          updateBusy(msg);
+          showSheetLoadingPlaceholder(msg);
+        },
+      });
       parsed = parseMusicXml(xmlText);
     } else {
       const buffer = await file.arrayBuffer();
@@ -1452,7 +1487,6 @@ async function populateExamplesMenu() {
 async function loadExample(ex) {
   const file = String(ex.file || "").replace(/^\/+/, "");
   if (!file) return;
-  const url = `./examples/${file}`;
   const loadingMsg = t("busyLoadingSong", { title: ex.title || file });
   beginBusy(loadingMsg);
   showSheetLoadingPlaceholder(loadingMsg);
@@ -1461,15 +1495,20 @@ async function loadExample(ex) {
   solo.clear();
   hiddenVoices.clear();
   try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Could not load ${file}`);
     let parsed;
     const displayName = ex.title || file;
     if (isMusicXmlName(file)) {
-      let xmlText = await res.text();
+      let xmlText = await fetchExampleAsMusicXml(file, {
+        onProgress: (msg) => {
+          updateBusy(msg);
+          showSheetLoadingPlaceholder(msg);
+        },
+      });
       xmlText = stripPersonalNames(xmlText);
       parsed = parseMusicXml(xmlText);
     } else {
+      const res = await fetch(`./examples/${file}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Could not load ${file}`);
       const buffer = await res.arrayBuffer();
       parsed = parseMidi(buffer);
       if (!parsed.notes.length) throw new Error("No notes found in this MIDI file");

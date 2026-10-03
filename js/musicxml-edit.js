@@ -2,6 +2,13 @@
  * Read / patch MusicXML metadata (title, part names, staff lines) for export.
  */
 
+import {
+  HOME_KEY_FIELD,
+  RECORDING_URL_FIELD,
+  REMARKS_FIELD,
+  VOICE_COLORS_FIELD,
+} from "./score-meta.js";
+
 function localName(el) {
   return el?.localName || el?.tagName?.replace(/^.*:/, "") || "";
 }
@@ -40,12 +47,6 @@ function shortAbbr(name) {
     .join(" ")
     .slice(0, 16);
 }
-
-const VOICE_COLORS_FIELD = "practice-player-voice-colors";
-const RECORDING_URL_FIELD = "practice-player-recording-url";
-const REMARKS_FIELD = "practice-player-remarks";
-/** Stable home key for modulation UI, e.g. "Bb major" or "A minor". */
-const HOME_KEY_FIELD = "practice-player-home-key";
 
 const STEP_TO_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 const PC_SHARP = [

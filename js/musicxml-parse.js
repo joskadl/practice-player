@@ -487,10 +487,8 @@ function readJustPlayJiFromXml(root) {
   return { markers, jiFileRefNote, pitchBendRange, justPlayMeta };
 }
 
+/** @deprecated Prefer readScoreFileAsMusicXml from score-import.js */
 export async function readMusicXmlFile(file) {
-  const name = (file.name || "").toLowerCase();
-  if (name.endsWith(".mxl")) {
-    throw new Error("Compressed .mxl is not supported yet — export uncompressed .musicxml from MuseScore");
-  }
-  return file.text();
+  const { readScoreFileAsMusicXml } = await import("./score-import.js");
+  return readScoreFileAsMusicXml(file);
 }

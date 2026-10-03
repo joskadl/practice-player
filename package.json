@@ -3,5 +3,15 @@
   "version": "0.2.19",
   "private": true,
   "description": "Standalone MIDI rehearsal player with choir soundfont",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "examples:build": "node scripts/build-examples-from-mscz.mjs",
+    "vendor:fflate": "node --input-type=module -e \"import fs from 'fs'; fs.copyFileSync('node_modules/fflate/esm/browser.js','vendor/fflate.js')\""
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "webmscore": "^1.2.1"
+  }
 }
