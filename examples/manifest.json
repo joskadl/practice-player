@@ -10,43 +10,43 @@
     {
       "id": "blue-christmas",
       "title": "Blue Christmas",
-      "file": "blue-christmas-for-barbershopers.musicxml",
-      "format": "musicxml",
+      "file": "blue-christmas-for-barbershopers.mscz",
+      "format": "mscz",
       "description": "Barbershop arrangement (Tenor/Lead, Bari/Bass)"
     },
     {
       "id": "gaudete",
       "title": "Gaudete, Christus est natus",
-      "file": "gaudete-christus-est-natus.musicxml",
-      "format": "musicxml",
+      "file": "gaudete-christus-est-natus.mscz",
+      "format": "mscz",
       "description": "SATB choir"
     },
     {
       "id": "gloria-in-excelsis-deo",
       "title": "Gloria in excelsis Deo",
-      "file": "gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.musicxml",
-      "format": "musicxml",
+      "file": "gloria-in-excelsis-deo.mscz",
+      "format": "mscz",
       "description": "SATB choir (Dutch lyrics)"
     },
     {
       "id": "please-come-home-for-christmas",
       "title": "Please Come Home for Christmas",
-      "file": "please-come-home-for-christmas.musicxml",
-      "format": "musicxml",
+      "file": "please-come-home-for-christmas.mscz",
+      "format": "mscz",
       "description": "Voice with alto sax, piano, and bass"
     },
     {
       "id": "entre-le-boeuf-et-lane-gris",
       "title": "Entre le bœuf et l'âne gris",
-      "file": "entre-le-boeuf-et-lane-gris.musicxml",
-      "format": "musicxml",
+      "file": "entre-le-boeuf-et-lane-gris.mscz",
+      "format": "mscz",
       "description": "SATB choir (arr. Felix de Nobel)"
     },
     {
       "id": "gabriels-message-satb",
       "title": "Gabriel's Message",
-      "file": "gabriels-message-satb.musicxml",
-      "format": "musicxml",
+      "file": "gabriels-message-satb.mscz",
+      "format": "mscz",
       "description": "SATB choir"
     }
   ]

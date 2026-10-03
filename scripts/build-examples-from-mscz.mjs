@@ -23,6 +23,7 @@ const HOME_BY_FILE = {
   "entre-le-boeuf-et-lane-gris.mscz": "G major",
   "gabriels-message-satb.mscz": "A minor",
   "gaudete-christus-est-natus.mscz": "A minor",
+  "gloria-in-excelsis-deo.mscz": "G major",
   "gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.mscz": "G major",
   "please-come-home-for-christmas.mscz": "E major",
   "stille-nacht.mscz": "C major",

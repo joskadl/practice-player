@@ -267,7 +267,7 @@ Prefer **marker-only Standard export** from JustPlay for practice; this app synt
 
 ## Demo files
 
-Open → **Examples** loads from `examples/manifest.json`. Prefer MuseScore `.mscz` as the source of truth (drop in files from your singing group). Run `npm run examples:build` to precompute sibling `.musicxml` files for fast / offline loads — the app uses that cache when present, otherwise converts `.mscz` on the fly.
+Open → **Examples** loads from `examples/manifest.json`. Example scores are MuseScore `.mscz` files (the choir source of truth). The app converts them to MusicXML on load (webmscore). Optionally run `npm run examples:build` to emit sibling `.musicxml` caches for faster local testing — those caches are not required in the published set.
 
 ---
 
@@ -275,7 +275,7 @@ Open → **Examples** loads from `examples/manifest.json`. Prefer MuseScore `.ms
 
 - **From device:** Open accepts `.mscz` / `.mscx` / `.mxl` / `.musicxml` / MIDI.
 - **On the fly:** `.mxl` is unzipped in-browser; `.mscz` is converted with [webmscore](https://github.com/LibreScore/webmscore) (GPL-3.0), lazy-loaded from jsDelivr on first use (~20 MB WASM, needs network once).
-- **Examples workflow:** commit `examples/*.mscz`, then `npm run examples:build` to refresh sibling `examples/*.musicxml` (uses MuseScore 4 CLI when installed, otherwise the `webmscore` devDependency). Manifest `file` may point at the `.mscz`; the loader prefers the MusicXML sibling when available.
+- **Examples workflow:** commit `examples/*.mscz` and list them in `manifest.json`. Optional: `npm run examples:build` writes sibling `.musicxml` caches for local testing (MuseScore CLI or webmscore); the published example set is `.mscz` only.
 - **License note:** on-the-fly `.mscz` conversion pulls in webmscore (GPL-3.0) from the CDN only when needed; the rest of the app does not bundle it.
 - **Shared metadata** (JI markers, remarks, home key, recording URL, …) uses stable MusicXML `miscellaneous-field` names (see `js/score-meta.js`). MuseScore stores the same values as Project Properties metaTags inside `.mscz`; import merges those tags so JustPlay / Practice Player / MuseScore stay aligned.
 
