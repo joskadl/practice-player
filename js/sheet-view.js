@@ -141,6 +141,8 @@ export class SheetView {
     this._zoomRenderBusy = false;
     this._zoomRenderPending = false;
     this._zoomRenderScroll = true;
+    /** @type {number[]|null} instrument indices with lyrics (from MusicXML), if known */
+    this._lyricPartIndices = null;
     this._editInput = null;
     this._editCtx = null;
     /** @type {HTMLInputElement|null} */
@@ -263,6 +265,7 @@ export class SheetView {
     this._cancelAnnotInput();
     this.xml = null;
     this.instrumentVoices = [];
+    this._lyricPartIndices = null;
     this._ready = false;
     this._timeline = [];
     this._onsetTicks = [];
@@ -581,6 +584,7 @@ export class SheetView {
     await this.ensure();
     this.clear();
     this.xml = xmlText;
+    this._lyricPartIndices = this._scanLyricPartIndicesFromXml(xmlText);
     this._isVoiceAudible = opts.isVoiceAudible || (() => true);
     this._voiceGain =
       opts.voiceGain || ((id) => (this._isVoiceAudible(id) ? 1 : 0));
@@ -1697,6 +1701,7 @@ export class SheetView {
     this.container.classList.toggle("pp-hide-lyrics", !this.layers.lyrics);
     this.container.classList.toggle("pp-hide-chords", !this.layers.chords);
     this.container.classList.toggle("pp-hide-notes", !this.layers.notes);
+    this._applyLyricSourcePresentation();
     this._packHiddenStavesVertical();
     // Packing / layer CSS changes layout — re-align the playhead bar.
     if (this._ready && this.osmd?.cursor) {
@@ -2171,18 +2176,170 @@ export class SheetView {
     }
   }
 
+  /** True when the user has this instrument's voice shown in roll/sheet. */
+  _voiceWantedVisible(instrumentIndex) {
+    const voice = this.instrumentVoices[instrumentIndex];
+    if (!voice || typeof this._isVoiceVisible !== "function") return true;
+    return !!this._isVoiceVisible(voice.id);
+  }
+
+  /**
+   * Part-list order indices that contain `<lyric>` in the source MusicXML.
+   * @param {string} xmlText
+   * @returns {number[]}
+   */
+  _scanLyricPartIndicesFromXml(xmlText) {
+    if (!xmlText) return [];
+    /** @type {string[]} */
+    const partOrder = [];
+    const spRe = /<score-part\b[^>]*\bid\s*=\s*["']([^"']+)["']/gi;
+    let m;
+    while ((m = spRe.exec(xmlText))) partOrder.push(m[1]);
+    if (!partOrder.length) return [];
+    /** @type {number[]} */
+    const out = [];
+    for (let i = 0; i < partOrder.length; i++) {
+      const pid = partOrder[i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const partRe = new RegExp(
+        `<part\\b[^>]*\\bid\\s*=\\s*["']${pid}["'][^>]*>([\\s\\S]*?)<\\/part>`,
+        "i",
+      );
+      const body = xmlText.match(partRe)?.[1] || "";
+      if (/<lyric\b/i.test(body)) out.push(i);
+    }
+    return out;
+  }
+
+  /**
+   * Instrument indices that carry MusicXML lyrics (usually soprano only).
+   * @returns {number[]}
+   */
+  _lyricInstrumentIndices() {
+    if (Array.isArray(this._lyricPartIndices) && this._lyricPartIndices.length) {
+      return this._lyricPartIndices.slice();
+    }
+    const instruments = this.osmd?.Sheet?.Instruments || [];
+    /** @type {number[]} */
+    const out = [];
+    for (let i = 0; i < instruments.length; i++) {
+      if (this._instrumentHasLyrics(instruments[i])) out.push(i);
+    }
+    return out;
+  }
+
+  _instrumentHasLyrics(instr) {
+    if (!instr) return false;
+    try {
+      const voices = instr.Voices || instr.voices || [];
+      for (const voice of voices) {
+        const entries = voice?.VoiceEntries || voice?.voiceEntries || [];
+        for (const ve of entries) {
+          const notes = ve?.Notes || ve?.notes || [];
+          for (const note of notes) {
+            const lyrics = note?.Lyrics || note?.lyrics;
+            if (Array.isArray(lyrics) ? lyrics.length : lyrics) return true;
+          }
+        }
+      }
+      // Fallback: some OSMD builds hang lyrics off staves / voice entries only.
+      const staves = instr.Staves || instr.staves || [];
+      for (const staff of staves) {
+        const sVoices = staff?.Voices || staff?.voices || [];
+        for (const voice of sVoices) {
+          const entries = voice?.VoiceEntries || voice?.voiceEntries || [];
+          for (const ve of entries) {
+            const notes = ve?.Notes || ve?.notes || [];
+            for (const note of notes) {
+              const lyrics = note?.Lyrics || note?.lyrics;
+              if (Array.isArray(lyrics) ? lyrics.length : lyrics) return true;
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  /**
+   * One lyric carrier: prefer a visible voice that has lyrics; else first lyric part.
+   * @returns {{ index: number, fallback: boolean }|null}
+   */
+  _pickLyricSource() {
+    if (!this.layers?.lyrics) return null;
+    const lyricIdx = this._lyricInstrumentIndices();
+    if (!lyricIdx.length) return null;
+    const visibleWithLyrics = lyricIdx.filter((i) => this._voiceWantedVisible(i));
+    if (visibleWithLyrics.length) {
+      return { index: visibleWithLyrics[0], fallback: false };
+    }
+    return { index: lyricIdx[0], fallback: true };
+  }
+
+  /** Instrument indices currently engraved (Visible !== false), in staff order. */
+  _visibleInstrumentOrder() {
+    const instruments = this.osmd?.Sheet?.Instruments || [];
+    /** @type {number[]} */
+    const order = [];
+    for (let i = 0; i < instruments.length; i++) {
+      if (instruments[i]?.Visible === false) continue;
+      order.push(i);
+    }
+    return order.length ? order : instruments.map((_, i) => i);
+  }
+
+  /**
+   * Keep only one lyric set; if the carrier voice is hidden, keep its staff for
+   * lyrics but hide its notation chrome.
+   */
+  _applyLyricSourcePresentation() {
+    const svg = this.container.querySelector("svg");
+    this.container.classList.remove("pp-lyric-fallback");
+    for (const g of this.container.querySelectorAll("g.staffline.pp-lyric-carrier")) {
+      g.classList.remove("pp-lyric-carrier");
+    }
+    for (const el of this.container.querySelectorAll(".pp-lyrics-suppressed")) {
+      el.classList.remove("pp-lyrics-suppressed");
+    }
+    if (!svg || !this.layers?.lyrics) return;
+
+    const source = this._pickLyricSource();
+    if (!source) return;
+
+    // DOM stafflines follow *visible* instruments only — not full part indices.
+    const visibleOrder = this._visibleInstrumentOrder();
+    const perSystem = Math.max(1, visibleOrder.length);
+    const staffGs = [...svg.querySelectorAll("g.staffline")];
+    for (let i = 0; i < staffGs.length; i++) {
+      const g = staffGs[i];
+      const instrIndex = visibleOrder[i % perSystem];
+      if (instrIndex === source.index) {
+        if (source.fallback) {
+          g.classList.add("pp-lyric-carrier");
+          this.container.classList.add("pp-lyric-fallback");
+        }
+        continue;
+      }
+      // Suppress duplicate / non-carrier lyrics so only one set shows.
+      for (const el of g.querySelectorAll(".lyrics, .dash")) {
+        el.classList.add("pp-lyrics-suppressed");
+      }
+    }
+  }
+
   applyVoiceVisibility() {
     if (!this.osmd?.Sheet) return;
     const instruments = this.osmd.Sheet.Instruments || [];
+    const lyricSource = this._pickLyricSource();
     let layoutChanged = false;
     for (let i = 0; i < instruments.length; i++) {
       const instr = instruments[i];
       if (!instr) continue;
-      const voice = this.instrumentVoices[i];
-      const want =
-        !voice ||
-        typeof this._isVoiceVisible !== "function" ||
-        this._isVoiceVisible(voice.id);
+      const userWant = this._voiceWantedVisible(i);
+      // Keep the lyric carrier engraved when lyrics are on but that voice is hidden,
+      // so fallback lyrics remain available (notation chrome is CSS-hidden).
+      const want = userWant || (lyricSource?.fallback && lyricSource.index === i);
       if (instr.Visible !== want) {
         instr.Visible = want;
         layoutChanged = true;

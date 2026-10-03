@@ -832,6 +832,37 @@ select {
   display: none !important;
 }
 
+/* Duplicate lyric lines on non-carrier parts (keep a single set). */
+.sheet-music .pp-lyrics-suppressed {
+  display: none !important;
+}
+
+/*
+ * Lyric fallback: carrier voice is hidden, but we kept its staff engraved so
+ * lyrics remain. Hide notation chrome on that staff; keep lyrics/dashes.
+ */
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier path,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier rect,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier line,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier polygon,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier polyline,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier use,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier [class*="vf-"] {
+  visibility: hidden !important;
+}
+
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .lyrics,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .lyrics *,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .lyrics[class*="vf-"],
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .lyrics [class*="vf-"],
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier svg .lyrics text,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .dash,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .dash *,
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .dash[class*="vf-"],
+.sheet-music.pp-lyric-fallback g.staffline.pp-lyric-carrier .dash [class*="vf-"] {
+  visibility: visible !important;
+}
+
 .sheet-music.pp-hide-chords .pp-chord {
   display: none !important;
 }
