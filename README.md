@@ -267,16 +267,19 @@ Prefer **marker-only Standard export** from JustPlay for practice; this app synt
 
 ## Demo files
 
-Open → **Examples** loads from `examples/manifest.json`. Example scores are MuseScore `.mscz` files (the choir source of truth). The app converts them to MusicXML on load (webmscore). Optionally run `npm run examples:build` to emit sibling `.musicxml` caches for faster local testing — those caches are not required in the published set.
+Open → **Examples** loads from `examples/manifest.json`. Example **sources** are MuseScore `.mscz` files; the app loads a sibling pre-converted `.musicxml` (generated with the MuseScore CLI). Runtime webmscore conversion is only a fallback for user-opened `.mscz` files — it is unreliable for MuseScore 4 scores.
 
 ---
 
 ## MuseScore (`.mscz`) import
 
 - **From device:** Open accepts `.mscz` / `.mscx` / `.mxl` / `.musicxml` / MIDI.
-- **On the fly:** `.mxl` is unzipped in-browser; `.mscz` is converted with [webmscore](https://github.com/LibreScore/webmscore) (GPL-3.0), lazy-loaded from jsDelivr on first use (~20 MB WASM, needs network once).
-- **Examples workflow:** commit `examples/*.mscz` and list them in `manifest.json`. Optional: `npm run examples:build` writes sibling `.musicxml` caches for local testing (MuseScore CLI or webmscore); the published example set is `.mscz` only.
-- **License note:** on-the-fly `.mscz` conversion pulls in webmscore (GPL-3.0) from the CDN only when needed; the rest of the app does not bundle it.
+- **On the fly (device files):** `.mxl` is unzipped in-browser; `.mscz` is converted with [webmscore](https://github.com/LibreScore/webmscore) (GPL-3.0), lazy-loaded from jsDelivr on first use (~20 MB WASM, needs network once). Prefer exporting MusicXML from MuseScore when webmscore fails.
+- **Examples workflow (required for ship):**
+  1. Commit `examples/*.mscz` and list them in `manifest.json`.
+  2. Run `npm run examples:build` (needs MuseScore 4 CLI / `MUSESCORE_CLI`) to write sibling `examples/*.musicxml`.
+  3. Commit those `.musicxml` caches. Pages deploy runs `npm run examples:verify` and fails if any sibling is missing or has no notes.
+- **License note:** on-the-fly `.mscz` conversion pulls in webmscore (GPL-3.0) from the CDN only when needed; shipped examples use pre-converted MusicXML and do not need it.
 - **Shared metadata** (JI markers, remarks, home key, recording URL, …) uses stable MusicXML `miscellaneous-field` names (see `js/score-meta.js`). MuseScore stores the same values as Project Properties metaTags inside `.mscz`; import merges those tags so JustPlay / Practice Player / MuseScore stay aligned.
 
 ---

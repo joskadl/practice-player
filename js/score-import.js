@@ -200,7 +200,9 @@ export async function readScoreFileAsMusicXml(file, opts = {}) {
 
 /**
  * Fetch an example path (relative URL) as MusicXML text.
- * For .mscz examples, prefers a sibling .musicxml deploy artifact when present.
+ * For .mscz examples, loads the sibling .musicxml deploy artifact (from
+ * `npm run examples:build`). Falls back to in-browser webmscore only if that
+ * cache is missing — unreliable for MuseScore 4 scores.
  * @param {string} file relative name under examples/
  * @param {{onProgress?: (msg: string) => void}} [opts]
  */
@@ -211,10 +213,14 @@ export async function fetchExampleAsMusicXml(file, opts = {}) {
   if (/\.(mscz|mscx)$/i.test(name)) {
     const sibling = musicXmlSiblingName(name);
     try {
+      opts.onProgress?.("Loading score…");
       const cached = await fetch(`./examples/${sibling}`, { cache: "no-store" });
       if (cached.ok) {
         const text = await cached.text();
-        if (text.includes("<score-partwise") || text.includes("<score-timewise")) {
+        if (
+          (text.includes("<score-partwise") || text.includes("<score-timewise"))
+          && /<note[\s>]/.test(text)
+        ) {
           return text;
         }
       }

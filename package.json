@@ -1,11 +1,12 @@
 ﻿{
   "name": "midi-practice-player",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "private": true,
   "description": "Standalone MIDI rehearsal player with choir soundfont",
   "type": "module",
   "scripts": {
     "examples:build": "node scripts/build-examples-from-mscz.mjs",
+    "examples:verify": "node scripts/verify-example-musicxml.mjs",
     "vendor:fflate": "node --input-type=module -e \"import fs from 'fs'; fs.copyFileSync('node_modules/fflate/esm/browser.js','vendor/fflate.js')\""
   },
   "dependencies": {

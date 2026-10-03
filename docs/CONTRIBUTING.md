@@ -12,9 +12,10 @@ Open http://localhost:8765/ — no bundler required.
 
 1. Exercise load → play → mute/solo → sheet edit → export MusicXML.
 2. If you touch sync: export/import pack, undo, and (if possible) pull/push against a test repo.
-3. Bump `sw.js` `CACHE` id and add any new scripts to `PRECACHE`.
-4. If the release is user-facing, bump `package.json` + `js/version.js`.
-5. Prefer conventional commits (`feat:`, `fix:`, `docs:`, `chore:`).
+3. If you change `examples/*.mscz`, run `npm run examples:build` (MuseScore CLI) and commit the sibling `.musicxml` files; `npm run examples:verify` must pass (Pages deploy checks this).
+4. Bump `sw.js` `CACHE` id and add any new scripts / example MusicXML paths to `PRECACHE`.
+5. If the release is user-facing, bump `package.json` + `js/version.js` + `version.json`.
+6. Prefer conventional commits (`feat:`, `fix:`, `docs:`, `chore:`).
 
 ## Code style
 

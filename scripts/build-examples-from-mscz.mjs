@@ -1,10 +1,12 @@
 /**
- * Precompute MusicXML from example .mscz / .mscx sources for fast / offline loads.
+ * Precompute MusicXML from example .mscz / .mscx sources for deploy / offline loads.
  *
  *   npm run examples:build
  *
- * Prefers the MuseScore CLI when installed (`mscore` / `MuseScore4.exe`);
- * otherwise uses the webmscore WASM package (devDependency).
+ * Requires the MuseScore CLI (`mscore` / `MuseScore4.exe` / `$MUSESCORE_CLI`).
+ * webmscore WASM often emits empty scores for MuseScore 4 files — do not use it
+ * for shipped example caches. Commit the generated sibling *.musicxml next to
+ * each *.mscz; Pages deploy verifies they exist via `npm run examples:verify`.
  *
  * Source of truth: examples/*.mscz. Writes sibling *.musicxml and stamps
  * practice-player-home-key when known.
@@ -98,58 +100,29 @@ function convertWithCli(cli, srcPath, outPath) {
   }
 }
 
-async function convertWithWebMscore(srcPath, format) {
-  // Node 22+: globalThis.navigator is a read-only getter; webmscore's shim needs writable.
-  try {
-    Object.defineProperty(globalThis, "navigator", {
-      value: { userAgent: "node", language: "en", languages: ["en"] },
-      configurable: true,
-      writable: true,
-      enumerable: true,
-    });
-  } catch {
-    /* already defined in a usable way */
-  }
-
-  const { default: WebMscore } = await import("webmscore");
-  await WebMscore.ready;
-  const bytes = new Uint8Array(fs.readFileSync(srcPath));
-  const score = await WebMscore.load(format, bytes, [], false);
-  try {
-    return await score.saveXml();
-  } finally {
-    try {
-      score.destroy?.();
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-async function convertOne(fileName, cli) {
+function convertOne(fileName, cli) {
   const srcPath = path.join(examplesDir, fileName);
   const outName = fileName.replace(/\.(mscz|mscx)$/i, ".musicxml");
   const outPath = path.join(examplesDir, outName);
-  const format = fileName.toLowerCase().endsWith(".mscx") ? "mscx" : "mscz";
 
-  let xml;
-  if (cli) {
-    convertWithCli(cli, srcPath, outPath);
-    xml = fs.readFileSync(outPath, "utf8");
-  } else {
-    xml = await convertWithWebMscore(srcPath, format);
-  }
+  convertWithCli(cli, srcPath, outPath);
+  let xml = fs.readFileSync(outPath, "utf8");
 
   const home =
     HOME_BY_FILE[fileName]
     || HOME_BY_FILE[fileName.replace(/\.mscx$/i, ".mscz")];
   if (home) xml = upsertHomeKey(xml, home);
 
+  const noteCount = (xml.match(/<note[\s>]/g) || []).length;
+  if (noteCount < 1) {
+    throw new Error(`${outName}: MuseScore CLI wrote MusicXML with no <note> elements`);
+  }
+
   fs.writeFileSync(outPath, xml, "utf8");
-  console.log(`wrote ${outName} (${xml.length} chars) from ${fileName}${cli ? " [cli]" : " [webmscore]"}`);
+  console.log(`wrote ${outName} (${xml.length} chars, ${noteCount} notes) from ${fileName}`);
 }
 
-async function main() {
+function main() {
   const sources = fs
     .readdirSync(examplesDir)
     .filter((n) => /\.(mscz|mscx)$/i.test(n))
@@ -160,16 +133,24 @@ async function main() {
   }
 
   const cli = findMuseScoreCli();
-  if (cli) console.log(`Using MuseScore CLI: ${cli}`);
-  else console.log("MuseScore CLI not found — using webmscore WASM");
+  if (!cli) {
+    console.error(
+      "MuseScore CLI not found. Install MuseScore 4 or set MUSESCORE_CLI.\n"
+        + "webmscore is not used for example caches (MuseScore 4 → empty XML).",
+    );
+    process.exit(1);
+  }
+  console.log(`Using MuseScore CLI: ${cli}`);
 
   for (const name of sources) {
-    await convertOne(name, cli);
+    convertOne(name, cli);
   }
   console.log(`Done (${sources.length} file${sources.length === 1 ? "" : "s"}).`);
 }
 
-main().catch((err) => {
+try {
+  main();
+} catch (err) {
   console.error(err);
   process.exit(1);
-});
+}
