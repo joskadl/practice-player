@@ -16,7 +16,6 @@ const HOME_KEY_FIELD = "practice-player-home-key";
 const HOME_BY_FILE = {
   "blue-christmas-for-barbershopers.musicxml": "Bb major",
   "entre-le-boeuf-et-lane-gris.musicxml": "G major",
-  "entre-le-boeuf-et-lane-gris_ji.musicxml": "G major",
   "gabriels-message-satb.musicxml": "A minor",
   "gaudete-christus-est-natus.musicxml": "A minor",
   "gloria-in-excelsis-deo-oggi-e-nato-il-salvatore.musicxml": "G major",
