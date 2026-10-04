@@ -1,0 +1,150 @@
+# Pull .mscz scores from a public Dropbox shared folder, convert to MusicXML,
+# regenerate the examples catalog, commit, and let Pages deploy.
+#
+# Dropbox: no token — folder shared link (?dl=1 ZIP).
+# Trigger: workflow_dispatch (app Sync button / Actions UI) or repository_dispatch.
+#
+# Secrets / vars:
+#   DROPBOX_EXAMPLES_URL — default folder URL when the dispatch input is empty
+name: Sync Dropbox examples
+
+on:
+  workflow_dispatch:
+    inputs:
+      dropbox_url:
+        description: Dropbox shared folder URL (optional; falls back to DROPBOX_EXAMPLES_URL)
+        required: false
+        type: string
+  repository_dispatch:
+    types: [sync-dropbox-examples]
+
+concurrency:
+  group: sync-dropbox-examples
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+  pages: write
+  id-token: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve Dropbox URL
+        id: url
+        env:
+          INPUT_URL: ${{ github.event.inputs.dropbox_url || github.event.client_payload.dropbox_url }}
+          SECRET_URL: ${{ secrets.DROPBOX_EXAMPLES_URL }}
+          VAR_URL: ${{ vars.DROPBOX_EXAMPLES_URL }}
+        run: |
+          URL="${INPUT_URL:-}"
+          if [ -z "$URL" ]; then URL="${SECRET_URL:-}"; fi
+          if [ -z "$URL" ]; then URL="${VAR_URL:-}"; fi
+          if [ -z "$URL" ]; then
+            echo "::error::No Dropbox URL. Pass workflow input dropbox_url or set secret/var DROPBOX_EXAMPLES_URL."
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch .mscz from Dropbox
+        env:
+          DROPBOX_EXAMPLES_URL: ${{ steps.url.outputs.url }}
+        run: node scripts/fetch-dropbox-examples.mjs
+
+      - name: Detect unchanged library
+        id: changed
+        run: |
+          CHANGED=$(node -e "const s=require('./examples/.dropbox-sync-status.json'); process.stdout.write(s.changed?'true':'false')")
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          if [ "$CHANGED" != "true" ]; then
+            echo "Dropbox library fingerprint unchanged — skipping convert/deploy."
+          fi
+
+      - name: Install MuseScore CLI deps
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libfuse2 libegl1 libopengl0 libjack-jackd2-0 wget
+
+      - name: Download MuseScore AppImage
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          # Pinned MuseScore 4 Studio AppImage (extract + xvfb for headless CLI).
+          wget -q -O MuseScore.AppImage \
+            "https://cdn.jsdelivr.net/musescore/v4.4.1/MuseScore-Studio-4.4.1.242490810-x86_64.AppImage"
+          chmod +x MuseScore.AppImage
+          ./MuseScore.AppImage --appimage-extract
+          echo "MUSESCORE_CLI=$GITHUB_WORKSPACE/squashfs-root/bin/mscore4portable" >> "$GITHUB_ENV"
+
+      - name: Convert .mscz → .musicxml
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          export QT_LOGGING_RULES="*.debug=false"
+          xvfb-run -a node scripts/build-examples-from-mscz.mjs
+
+      - name: Build manifest + SW precache list
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          node scripts/build-examples-manifest.mjs
+          node scripts/update-sw-example-precache.mjs
+          node scripts/verify-example-musicxml.mjs
+
+      - name: Bump service worker cache id
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          node <<'EOF'
+          const fs = require("fs");
+          const p = "sw.js";
+          let s = fs.readFileSync(p, "utf8");
+          s = s.replace(
+            /const CACHE = "midi-practice-player-v(\d+)";/,
+            (_, n) => `const CACHE = "midi-practice-player-v${Number(n) + 1}";`,
+          );
+          fs.writeFileSync(p, s);
+          EOF
+
+      - name: Commit and push
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add examples/ sw.js
+          if git diff --staged --quiet; then
+            echo "Nothing staged after build."
+            echo "pushed=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          git commit -m "chore(examples): sync scores from Dropbox"
+          git push
+          echo "pushed=true" >> "$GITHUB_ENV"
+
+      # GITHUB_TOKEN pushes do not chain-trigger pages.yml — deploy from this job.
+      - name: Setup Pages
+        if: steps.changed.outputs.changed == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: steps.changed.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        if: steps.changed.outputs.changed == 'true'
+        uses: actions/deploy-pages@v4

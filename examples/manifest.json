@@ -1,53 +1,53 @@
 {
   "examples": [
     {
-      "id": "stille-nacht",
-      "title": "Stille Nacht",
-      "file": "stille-nacht.mscz",
-      "format": "mscz",
-      "description": "SATB choir arrangement (Dutch lyrics)"
-    },
-    {
-      "id": "blue-christmas",
+      "id": "blue-christmas-for-barbershopers",
       "title": "Blue Christmas",
       "file": "blue-christmas-for-barbershopers.mscz",
       "format": "mscz",
-      "description": "Barbershop arrangement (Tenor/Lead, Bari/Bass)"
-    },
-    {
-      "id": "gaudete",
-      "title": "Gaudete, Christus est natus",
-      "file": "gaudete-christus-est-natus.mscz",
-      "format": "mscz",
-      "description": "SATB choir"
-    },
-    {
-      "id": "gloria-in-excelsis-deo",
-      "title": "Gloria in excelsis Deo",
-      "file": "gloria-in-excelsis-deo.mscz",
-      "format": "mscz",
-      "description": "SATB choir (Dutch lyrics)"
-    },
-    {
-      "id": "please-come-home-for-christmas",
-      "title": "Please Come Home for Christmas",
-      "file": "please-come-home-for-christmas.mscz",
-      "format": "mscz",
-      "description": "Voice with alto sax, piano, and bass"
+      "description": "From Dropbox score library"
     },
     {
       "id": "entre-le-boeuf-et-lane-gris",
       "title": "Entre le bœuf et l'âne gris",
       "file": "entre-le-boeuf-et-lane-gris.mscz",
       "format": "mscz",
-      "description": "SATB choir (arr. Felix de Nobel)"
+      "description": "From Dropbox score library"
     },
     {
       "id": "gabriels-message-satb",
       "title": "Gabriel's Message",
       "file": "gabriels-message-satb.mscz",
       "format": "mscz",
-      "description": "SATB choir"
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "gaudete-christus-est-natus",
+      "title": "Gaudete, Christus est natus",
+      "file": "gaudete-christus-est-natus.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "gloria-in-excelsis-deo",
+      "title": "Gloria in excelsis Deo",
+      "file": "gloria-in-excelsis-deo.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "please-come-home-for-christmas",
+      "title": "Please Come Home for Christmas",
+      "file": "please-come-home-for-christmas.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "stille-nacht",
+      "title": "Stille Nacht",
+      "file": "stille-nacht.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
     }
   ]
 }

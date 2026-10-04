@@ -14,3 +14,4 @@ examples/_img_crops/
 examples/_convert-job.json
 examples/*.pdf
 examples/*.mxl
+examples/.dropbox-sync-status.json

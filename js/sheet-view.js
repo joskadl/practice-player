@@ -1091,8 +1091,8 @@ export class SheetView {
       // Skip notation that lives outside the five staff lines.
       if (el.closest?.(".lyrics, .dash, .pp-chord, .pp-annot-note")) continue;
       const r = el.getBoundingClientRect();
-      // Staff lines are long and hairline-thin in screen space.
-      if (!(r.width >= 36 && r.height <= 3.5 && r.height > 0)) continue;
+      // Staff lines are long and hairline-thin in screen space (allow zoomed strokes).
+      if (!(r.width >= 36 && r.height <= 6 && r.height > 0)) continue;
       const top = r.top - host.top + scrollT;
       const bottom = r.bottom - host.top + scrollT;
       minTop = minTop == null ? top : Math.min(minTop, top);
@@ -1283,73 +1283,40 @@ export class SheetView {
     });
     items.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
 
-    // Match each OSMD staff in the active system to the nearest DOM staffline band.
-    const sys = this._musicSystemUnderCursor();
-    const osmdLines = [...(sys?.StaffLines || sys?.staffLines || [])].filter(Boolean);
-    const cal = this._osmdYCalibration();
-    if (osmdLines.length && cal) {
-      const { k, offset } = cal;
-      /** @type {Element[]} */
-      const matched = [];
-      /** @type {Set<Element>} */
-      const used = new Set();
-      const ordered = osmdLines
-        .map((sl) => {
-          const y = sl?.PositionAndShape?.AbsolutePosition?.y;
-          return { sl, y: typeof y === "number" ? y : null };
-        })
-        .filter((x) => x.y != null)
-        .sort((a, b) => a.y - b.y);
-
-      for (const { y } of ordered) {
-        const targetTop = k * y + offset;
-        let best = null;
-        let bestDist = Infinity;
-        for (const it of items) {
-          if (used.has(it.g)) continue;
-          const d = Math.abs(it.top - targetTop);
-          if (d < bestDist) {
-            bestDist = d;
-            best = it;
-          }
-        }
-        // Reject wild mismatches (wrong system).
-        if (best && bestDist < 48) {
-          used.add(best.g);
-          matched.push(best.g);
-        }
-      }
-      // Only accept a full-system match. A partial match (e.g. one staff while
-      // calibration drifts mid-playback) makes the playhead short/thin.
-      if (matched.length >= ordered.length) return matched;
-    }
-
     const perSystem = this._stavesPerSystem();
-    if (perSystem > 0 && items.length >= perSystem) {
-      let seedIdx = items.findIndex((it) => seed.has(it.g));
-      if (seedIdx < 0) seedIdx = 0;
-      // Grow a contiguous window of ``perSystem`` staves that contains the seed,
-      // preferring the window whose staff-line tops best match a tight pack.
-      let bestStart = Math.max(0, Math.min(seedIdx, items.length - perSystem));
-      // Snap so seed lies inside [start, start+perSystem).
-      bestStart = Math.max(0, Math.min(seedIdx - (perSystem - 1), items.length - perSystem));
-      const startContaining = Math.floor(seedIdx / perSystem) * perSystem;
-      if (startContaining + perSystem <= items.length && seedIdx >= startContaining) {
-        bestStart = startContaining;
-      } else {
-        bestStart = Math.max(0, seedIdx - (perSystem - 1));
-        bestStart = Math.min(bestStart, Math.max(0, items.length - perSystem));
-        // Ensure seed is inside the window.
-        if (seedIdx < bestStart) bestStart = seedIdx;
-        if (seedIdx >= bestStart + perSystem) {
-          bestStart = seedIdx - perSystem + 1;
-        }
-        bestStart = Math.max(0, Math.min(bestStart, items.length - perSystem));
-      }
-      return items.slice(bestStart, bestStart + perSystem).map((it) => it.g);
+    /** @type {number[]} */
+    const seedIndices = [];
+    for (let i = 0; i < items.length; i++) {
+      if (seed.has(items[i].g)) seedIndices.push(i);
     }
 
-    if (seed.size) return [...seed];
+    // Contiguous window of ``perSystem`` staves containing every seed staff.
+    // Grow downward first so Bass is included even when only upper voices seed.
+    if (perSystem > 0 && items.length >= perSystem) {
+      let start;
+      let end;
+      if (seedIndices.length) {
+        start = Math.min(...seedIndices);
+        end = Math.max(...seedIndices) + 1;
+        while (end - start < perSystem && end < items.length) end += 1;
+        while (end - start < perSystem && start > 0) start -= 1;
+      } else {
+        start = 0;
+        end = perSystem;
+      }
+      // Keep the window inside one system-sized block when possible.
+      if (end - start > perSystem) {
+        // Seeds already span more than one system estimate — keep them all.
+      } else if (end - start < perSystem) {
+        start = Math.max(0, Math.min(start, items.length - perSystem));
+        end = start + perSystem;
+      }
+      return items.slice(start, end).map((it) => it.g);
+    }
+
+    if (seedIndices.length) {
+      return seedIndices.map((i) => items[i].g);
+    }
     return items.slice(0, Math.max(1, perSystem)).map((it) => it.g);
   }
 
@@ -1368,6 +1335,8 @@ export class SheetView {
 
     let minLeft = null;
     let maxNoteWidth = 0;
+    let noteTop = null;
+    let noteBottom = null;
     try {
       const gnotes =
         typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
@@ -1386,7 +1355,11 @@ export class SheetView {
         const r = svgEl.getBoundingClientRect();
         if (!(r.width > 0 || r.height > 0)) continue;
         const left = r.left - host.left + scrollL;
+        const top = r.top - host.top + scrollT;
+        const bottom = r.bottom - host.top + scrollT;
         minLeft = minLeft == null ? left : Math.min(minLeft, left);
+        noteTop = noteTop == null ? top : Math.min(noteTop, top);
+        noteBottom = noteBottom == null ? bottom : Math.max(noteBottom, bottom);
         // Note SVG groups include stems; prefer a notehead-ish width.
         maxNoteWidth = Math.max(maxNoteWidth, Math.min(r.width, Math.max(10, r.height * 1.15)));
       }
@@ -1396,10 +1369,8 @@ export class SheetView {
     if (minLeft == null) return null;
     const width = Math.max(CURSOR_MIN_WIDTH_PX, maxNoteWidth || CURSOR_MIN_WIDTH_PX);
 
-    // Prefer painted staff-line DOM extents when we have a full system —
-    // OSMD AbsolutePosition calibration can under-reach the bass staff.
+    // Painted staff-line DOM for the active system (SATB block).
     const systemStaffs = this._activeSystemStaffGroups();
-    const perSystem = this._stavesPerSystem();
     let domTop = null;
     let domBottom = null;
     for (const g of systemStaffs) {
@@ -1411,116 +1382,100 @@ export class SheetView {
       }
       const r = g.getBoundingClientRect();
       if (!(r.height > 1)) continue;
+      // Staffline <g> often includes lyrics — estimate the five-line band only.
       const top = r.top - host.top + scrollT;
-      const staffBand = Math.min(r.height * 0.45, Math.max(28, r.height * 0.35));
+      const staffBand = Math.min(Math.max(22, r.height * 0.22), 56);
       const bottom = top + staffBand;
       domTop = domTop == null ? top : Math.min(domTop, top);
       domBottom = domBottom == null ? bottom : Math.max(domBottom, bottom);
     }
-    // Require a full system (or all staffs we found if the score has fewer).
-    const needStaffs = Math.max(1, perSystem);
-    if (
-      domTop != null
-      && domBottom != null
-      && domBottom > domTop
-      && systemStaffs.length >= needStaffs
-    ) {
-      return {
-        left: minLeft,
-        top: Math.max(0, domTop),
-        bottom: domBottom,
-        width,
-      };
-    }
 
     const osmdBand = this._activeSystemStaffLineBounds();
-    if (osmdBand && osmdBand.bottom > osmdBand.top) {
-      return {
-        left: minLeft,
-        top: Math.max(0, osmdBand.top),
-        bottom: osmdBand.bottom,
-        width,
-      };
+
+    // Union staff spans with sounding noteheads so Bass is never clipped when
+    // OSMD AbsolutePosition under-reaches or a staffline group is missed.
+    let top = null;
+    let bottom = null;
+    const absorb = (t, b) => {
+      if (t == null || b == null || !(b > t)) return;
+      top = top == null ? t : Math.min(top, t);
+      bottom = bottom == null ? b : Math.max(bottom, b);
+    };
+    absorb(domTop, domBottom);
+    absorb(osmdBand?.top, osmdBand?.bottom);
+    absorb(noteTop, noteBottom);
+
+    if (top == null || bottom == null || !(bottom > top)) {
+      if (this._lastCursorGeom?.height > 40) {
+        return {
+          left: minLeft,
+          top: this._lastCursorGeom.top,
+          bottom: this._lastCursorGeom.top + this._lastCursorGeom.height,
+          width: Math.max(width, this._lastCursorGeom.width || 0),
+        };
+      }
+      return null;
     }
 
-    // Last resort: still prefer whatever staff DOM we have over single noteheads
-    // (notehead-only height is the short thin bar users see during playback).
-    if (domTop != null && domBottom != null && domBottom > domTop) {
-      return {
-        left: minLeft,
-        top: Math.max(0, domTop),
-        bottom: domBottom,
-        width,
-      };
+    // If we previously had a taller bar at nearly the same system top, keep at
+    // least that height (avoids shrinking when one voice rests for a beat).
+    if (
+      this._lastCursorGeom
+      && this._lastCursorGeom.height > bottom - top
+      && Math.abs(this._lastCursorGeom.top - top) < 36
+    ) {
+      bottom = Math.max(bottom, this._lastCursorGeom.top + this._lastCursorGeom.height);
     }
 
-    // Keep prior full-system geometry rather than collapsing to one notehead.
-    if (this._lastCursorGeom?.height > 40) {
-      return {
-        left: minLeft,
-        top: this._lastCursorGeom.top,
-        bottom: this._lastCursorGeom.top + this._lastCursorGeom.height,
-        width: Math.max(width, this._lastCursorGeom.width || 0),
-      };
-    }
-
-    return null;
+    return {
+      left: minLeft,
+      top: Math.max(0, top),
+      bottom,
+      width,
+    };
   }
 
   /**
-   * Apply left/top/width/height to the OSMD cursor element, overriding img attrs
-   * that cursor.update() may have just written.
-   * @param {{left:number, top:number, width:number, height:number}} geom
-   */
-  _applyCursorGeometry(geom) {
-    const el = this.osmd?.cursor?.cursorElement;
-    if (!el || !geom) return;
-    const left = Math.max(0, geom.left);
-    const top = Math.max(0, geom.top);
-    const width = Math.max(CURSOR_MIN_WIDTH_PX, geom.width || CURSOR_MIN_WIDTH_PX);
-    const height = Math.max(16, geom.height || 16);
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-    el.style.width = `${width}px`;
-    el.style.height = `${height}px`;
-    el.style.maxHeight = "none";
-    el.style.maxWidth = "none";
-    el.style.objectFit = "fill";
-    // OSMD paints an <img> and sets width/height attributes — clear so CSS wins.
-    if (el.tagName === "IMG" || el.tagName === "img") {
-      el.removeAttribute("width");
-      el.removeAttribute("height");
-      el.width = width;
-      el.height = height;
-    }
-    this._lastCursorGeom = { left, top, width, height };
-  }
-
-  /**
-   * Place/size the cursor bar: X at noteheads; Y spans only the active system’s
-   * top→bottom staff lines so the bar does not cross later systems.
+   * Snap the playhead to noteheads horizontally; keep OSMD’s system-spanning
+   * top/height (Standard cursor already covers all staves in the MusicSystem).
+   *
+   * Important: never leave a CSS ``style.height`` / ``style.top`` override —
+   * those beat the ``img.height`` OSMD sets in ``cursor.update()`` and shrink
+   * the bar (e.g. stopping above Bass).
    */
   _nudgeCursorToNoteheads() {
     const el = this.osmd?.cursor?.cursorElement;
     if (!el) return;
+
+    // Drop prior CSS height overrides so OSMD’s img.height (full system) wins.
+    // Do not clear style.top — cursor.update() just set it.
+    el.style.height = "";
+    el.style.maxHeight = "none";
+    el.style.maxWidth = "none";
+    el.style.objectFit = "fill";
+
     const bounds = this._cursorAlignBounds();
-    if (!bounds) {
-      // cursor.update() often resets to a short thin bar — restore last good size.
-      if (this._lastCursorGeom) {
-        const left = Number.parseFloat(el.style.left) || this._lastCursorGeom.left;
-        this._applyCursorGeometry({
-          ...this._lastCursorGeom,
-          left,
-        });
+    if (bounds) {
+      el.style.left = `${Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX)}px`;
+      const osmdW = Number(el.width) || 0;
+      const width = Math.max(CURSOR_MIN_WIDTH_PX, bounds.width || 0, osmdW);
+      el.style.width = `${width}px`;
+      if (el.tagName === "IMG" || el.tagName === "img") {
+        el.width = width;
       }
-      return;
+      this._lastCursorGeom = {
+        left: Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX),
+        top: Number.parseFloat(el.style.top) || 0,
+        width,
+        height: Number(el.height) || 0,
+      };
+    } else if (this._lastCursorGeom) {
+      el.style.left = `${this._lastCursorGeom.left}px`;
+      el.style.width = `${this._lastCursorGeom.width}px`;
+      if (el.tagName === "IMG" || el.tagName === "img") {
+        el.width = this._lastCursorGeom.width;
+      }
     }
-    this._applyCursorGeometry({
-      left: Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX),
-      top: bounds.top,
-      width: bounds.width,
-      height: Math.max(16, bounds.bottom - bounds.top),
-    });
   }
 
   /**

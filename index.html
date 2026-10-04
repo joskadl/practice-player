@@ -63,6 +63,28 @@
         </select>
       </label>
       <span id="status" class="status" aria-live="polite"></span>
+      <details class="library-sync" id="librarySync">
+        <summary data-i18n="librarySync">Score library (Dropbox)</summary>
+        <p class="hint tight" data-i18n="librarySyncHelp">Public Dropbox folder of .mscz files. Sync runs MuseScore conversion + redeploy on GitHub (no Dropbox token). Needs a GitHub token with Actions write.</p>
+        <label class="sheet-edit-field">
+          <span data-i18n="dropboxUrl">Dropbox folder URL</span>
+          <input id="dropboxUrl" type="url" placeholder="https://www.dropbox.com/sh/…" autocomplete="off" />
+        </label>
+        <div class="sync-settings-grid">
+          <label class="sheet-edit-field"><span data-i18n="owner">Owner</span><input id="libGhOwner" type="text" placeholder="username" autocomplete="off" /></label>
+          <label class="sheet-edit-field"><span data-i18n="repo">Repo</span><input id="libGhRepo" type="text" placeholder="practice-player" autocomplete="off" /></label>
+          <label class="sheet-edit-field"><span data-i18n="branch">Branch</span><input id="libGhBranch" type="text" placeholder="main" autocomplete="off" /></label>
+        </div>
+        <label class="sheet-edit-field">
+          <span data-i18n="ghTokenActions">GitHub token (Actions read/write)</span>
+          <input id="libGhToken" type="password" autocomplete="off" placeholder="github_pat_… / ghp_…" />
+        </label>
+        <div class="library-sync-row">
+          <button type="button" id="librarySettingsSave" class="secondary" data-i18n="saveSettings">Save settings</button>
+          <button type="button" id="dropboxSyncBtn" class="secondary" data-i18n="dropboxSync" data-i18n-title="dropboxSyncTip">Sync scores from Dropbox</button>
+        </div>
+        <p id="dropboxSyncStatus" class="hint tight library-sync-status" aria-live="polite"></p>
+      </details>
     </section>
 
     <section class="panel transport-panel">
@@ -236,7 +258,7 @@
           <label class="sheet-edit-field"><span data-i18n="branch">Branch</span><input id="ghBranch" type="text" placeholder="main" autocomplete="off" /></label>
         </div>
         <label class="sheet-edit-field">
-          <span data-i18n="ghToken">GitHub token (Contents read/write)</span>
+          <span data-i18n="ghToken">GitHub token (Contents + Actions read/write)</span>
           <input id="ghToken" type="password" autocomplete="off" placeholder="ghp_…" />
         </label>
         <label class="sheet-edit-field">
