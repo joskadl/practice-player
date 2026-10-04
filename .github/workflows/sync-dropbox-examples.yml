@@ -80,7 +80,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libfuse2 libegl1 libopengl0 libjack-jackd2-0 \
-            libpipewire-0.3-0 wget
+            libpipewire-0.3-0 libxcb-cursor0 wget
 
       - name: Download MuseScore AppImage
         if: steps.changed.outputs.changed == 'true'
@@ -94,13 +94,15 @@ jobs:
           if [ ! -x "$CLI" ]; then
             CLI="$(find "$GITHUB_WORKSPACE/squashfs-root/bin" -maxdepth 1 -type f -executable | head -n 1)"
           fi
+          test -x "$CLI"
           echo "MUSESCORE_CLI=$CLI" >> "$GITHUB_ENV"
-          "$CLI" --version
+          xvfb-run -a env QT_QPA_PLATFORM=xcb QT_LOGGING_RULES="*.debug=false" "$CLI" --version
 
       - name: Convert .mscz → .musicxml
         if: steps.changed.outputs.changed == 'true'
         run: |
           export QT_LOGGING_RULES="*.debug=false"
+          export QT_QPA_PLATFORM=xcb
           xvfb-run -a node scripts/build-examples-from-mscz.mjs
 
       - name: Build manifest + SW precache list
