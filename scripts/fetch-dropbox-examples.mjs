@@ -16,22 +16,13 @@ import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 import { execFileSync } from "child_process";
 import os from "os";
+import { dropboxShareDisplayUrl, normalizeDropboxDlUrl } from "./lib/dropbox-url.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const examplesDir = path.join(root, "examples");
 const statusPath = path.join(examplesDir, ".dropbox-sync-status.json");
 const metaPath = path.join(examplesDir, ".dropbox-sync.json");
-
-function normalizeDropboxDlUrl(raw) {
-  let url = String(raw || "").trim();
-  if (!url) throw new Error("Missing Dropbox shared folder URL");
-  url = url.replace(/\?dl=0\b/i, "?dl=1");
-  if (!/[?&]dl=1\b/i.test(url)) {
-    url += url.includes("?") ? "&dl=1" : "?dl=1";
-  }
-  return url;
-}
 
 function listZipPaths(zipPath) {
   const out = execFileSync("unzip", ["-Z1", zipPath], { encoding: "utf8" });
@@ -163,7 +154,7 @@ async function main() {
     }
 
     const meta = {
-      sourceUrl: url.replace(/[?&]dl=1\b/i, "").replace(/\?$/, ""),
+      sourceUrl: dropboxShareDisplayUrl(url),
       fetchedAt: new Date().toISOString(),
       fingerprint: staged.fingerprint,
       files: staged.files.map(({ name, bytes, sha256 }) => ({ name, bytes, sha256 })),

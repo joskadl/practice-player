@@ -5,6 +5,9 @@
   "description": "Standalone MIDI rehearsal player with choir soundfont",
   "type": "module",
   "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "test:unit": "node scripts/run-tests.mjs",
+    "test:ji": "node scripts/test-ji-remap.mjs",
     "examples:build": "node scripts/build-examples-from-mscz.mjs",
     "examples:verify": "node scripts/verify-example-musicxml.mjs",
     "examples:manifest": "node scripts/build-examples-manifest.mjs",

@@ -8,6 +8,16 @@ python -m http.server 8765
 
 Open http://localhost:8765/ — no bundler required.
 
+## Tests
+
+```bash
+npm test
+```
+
+Node’s built-in test runner covers score metadata, practice packs, MuseScore metaTag import, Dropbox URL helpers, example smoke checks, and JI remapping (`scripts/test-ji-remap.mjs`). CI runs the same suite in `.github/workflows/test.yml`.
+
+Interop with JustPlay: keep `js/score-meta.js` field names aligned with JustPlay `core/score_meta.py` (enforced there by `tests/test_score_meta_contract.py` when this tree is present).
+
 ## Before you ship a change
 
 1. Exercise load → play → mute/solo → sheet edit → export MusicXML.

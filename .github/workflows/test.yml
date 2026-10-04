@@ -1,0 +1,22 @@
+# Unit / smoke tests for Practice Player (no browser, no MuseScore).
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unit tests
+        run: npm test
+      - name: Example MusicXML verify
+        run: npm run examples:verify
