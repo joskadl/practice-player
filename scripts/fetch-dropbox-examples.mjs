@@ -99,7 +99,7 @@ async function main() {
   if (buf.length < 64) throw new Error("Dropbox download was empty");
   if (buf[0] !== 0x50 || buf[1] !== 0x4b) {
     throw new Error(
-      "Download was not a ZIP. Use a Dropbox *folder* shared link (…/sh/…).",
+      "Download was not a ZIP. Use a Dropbox *folder* shared link (…/sh/… or …/scl/fo/…).",
     );
   }
 

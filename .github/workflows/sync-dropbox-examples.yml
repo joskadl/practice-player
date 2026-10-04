@@ -84,12 +84,17 @@ jobs:
       - name: Download MuseScore AppImage
         if: steps.changed.outputs.changed == 'true'
         run: |
-          # Pinned MuseScore 4 Studio AppImage (extract + xvfb for headless CLI).
+          # Pinned MuseScore 4.7.x — scores in Dropbox are version 4.70; older CLIs exit 40.
           wget -q -O MuseScore.AppImage \
-            "https://cdn.jsdelivr.net/musescore/v4.4.1/MuseScore-Studio-4.4.1.242490810-x86_64.AppImage"
+            "https://github.com/musescore/MuseScore/releases/download/v4.7.5/MuseScore-Studio-4.7.5.260831071-x86_64.AppImage"
           chmod +x MuseScore.AppImage
           ./MuseScore.AppImage --appimage-extract
-          echo "MUSESCORE_CLI=$GITHUB_WORKSPACE/squashfs-root/bin/mscore4portable" >> "$GITHUB_ENV"
+          CLI="$GITHUB_WORKSPACE/squashfs-root/bin/mscore4portable"
+          if [ ! -x "$CLI" ]; then
+            CLI="$(find "$GITHUB_WORKSPACE/squashfs-root/bin" -maxdepth 1 -type f -executable | head -n 1)"
+          fi
+          echo "MUSESCORE_CLI=$CLI" >> "$GITHUB_ENV"
+          "$CLI" --version
 
       - name: Convert .mscz → .musicxml
         if: steps.changed.outputs.changed == 'true'
