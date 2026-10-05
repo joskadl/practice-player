@@ -1015,6 +1015,7 @@ export class SheetView {
       targetWn != null && this._cursorIdx === idx && Math.abs(curWn - targetWn) > 1e-4;
     if (idx < this._cursorIdx || drifted) {
       this._resetCursorToFirstNote();
+      this._lastCursorGeom = null;
     }
     while (this._cursorIdx < idx && !iteratorEnded(cursor.iterator)) {
       if (!this._advanceCursorNotesOnly()) break;
@@ -1243,7 +1244,9 @@ export class SheetView {
 
   /**
    * Staffline groups for only the active system (e.g. one SATB brace), not every
-   * system on the page. Prefers matching OSMD StaffLines by calibrated Y.
+   * system on the page. Uses notes under the cursor as seeds, then expands to
+   * ``perSystem`` staves upward-first so Bass-only beats never steal the next
+   * system's top staff (which shifted the playhead down by one brace).
    * @returns {Element[]}
    */
   _activeSystemStaffGroups() {
@@ -1290,21 +1293,38 @@ export class SheetView {
       if (seed.has(items[i].g)) seedIndices.push(i);
     }
 
-    // Contiguous window of ``perSystem`` staves containing every seed staff.
-    // Grow downward first so Bass is included even when only upper voices seed.
     if (perSystem > 0 && items.length >= perSystem) {
       let start;
       let end;
       if (seedIndices.length) {
         start = Math.min(...seedIndices);
         end = Math.max(...seedIndices) + 1;
-        while (end - start < perSystem && end < items.length) end += 1;
+        // Expand upward first, then downward — stays inside the current brace.
         while (end - start < perSystem && start > 0) start -= 1;
+        while (end - start < perSystem && end < items.length) end += 1;
       } else {
-        start = 0;
-        end = perSystem;
+        // No pitched seeds: pick the system whose band is closest to OSMD layout.
+        const osmdBand = this._activeSystemStaffLineBounds();
+        if (osmdBand) {
+          let best = 0;
+          let bestDist = Infinity;
+          for (let i = 0; i <= items.length - perSystem; i += perSystem) {
+            const top = items[i].top;
+            const bottom = items[i + perSystem - 1].bottom;
+            const dist =
+              Math.abs(top - osmdBand.top) + Math.abs(bottom - osmdBand.bottom);
+            if (dist < bestDist) {
+              bestDist = dist;
+              best = i;
+            }
+          }
+          start = best;
+          end = best + perSystem;
+        } else {
+          start = 0;
+          end = perSystem;
+        }
       }
-      // Keep the window inside one system-sized block when possible.
       if (end - start > perSystem) {
         // Seeds already span more than one system estimate — keep them all.
       } else if (end - start < perSystem) {
@@ -1390,10 +1410,12 @@ export class SheetView {
       domBottom = domBottom == null ? bottom : Math.max(domBottom, bottom);
     }
 
+    // Calibrated OSMD StaffLine AbsolutePosition (fallback / fill gaps).
     const osmdBand = this._activeSystemStaffLineBounds();
 
-    // Union staff spans with sounding noteheads so Bass is never clipped when
-    // OSMD AbsolutePosition under-reaches or a staffline group is missed.
+    // Prefer painted staff lines for Y — they match what the eye sees. OSMD's
+    // cursor.update() top can drift later in a score; noteheads alone under-span
+    // when a voice rests and must not pull the bar into the next system.
     let top = null;
     let bottom = null;
     const absorb = (t, b) => {
@@ -1402,8 +1424,27 @@ export class SheetView {
       bottom = bottom == null ? b : Math.max(bottom, b);
     };
     absorb(domTop, domBottom);
-    absorb(osmdBand?.top, osmdBand?.bottom);
-    absorb(noteTop, noteBottom);
+    if (top == null || bottom == null) {
+      absorb(osmdBand?.top, osmdBand?.bottom);
+    } else if (osmdBand) {
+      // Allow OSMD to extend slightly within one staff of the DOM band only.
+      const slack = 28;
+      if (osmdBand.top >= top - slack && osmdBand.top <= bottom + slack) {
+        top = Math.min(top, osmdBand.top);
+      }
+      if (osmdBand.bottom >= top - slack && osmdBand.bottom <= bottom + slack) {
+        bottom = Math.max(bottom, osmdBand.bottom);
+      }
+    }
+    if (top == null || bottom == null) {
+      absorb(noteTop, noteBottom);
+    } else if (noteTop != null && noteBottom != null) {
+      const pad = 12;
+      if (noteTop >= top - pad && noteBottom <= bottom + pad) {
+        top = Math.min(top, noteTop);
+        bottom = Math.max(bottom, noteBottom);
+      }
+    }
 
     if (top == null || bottom == null || !(bottom > top)) {
       if (this._lastCursorGeom?.height > 40) {
@@ -1417,12 +1458,12 @@ export class SheetView {
       return null;
     }
 
-    // If we previously had a taller bar at nearly the same system top, keep at
-    // least that height (avoids shrinking when one voice rests for a beat).
+    // Same-system rests: keep prior height when the top barely moved. Drop the
+    // carry when the system changes (top jump) so a drifted bar cannot stick.
     if (
       this._lastCursorGeom
       && this._lastCursorGeom.height > bottom - top
-      && Math.abs(this._lastCursorGeom.top - top) < 36
+      && Math.abs(this._lastCursorGeom.top - top) < 20
     ) {
       bottom = Math.max(bottom, this._lastCursorGeom.top + this._lastCursorGeom.height);
     }
@@ -1436,44 +1477,43 @@ export class SheetView {
   }
 
   /**
-   * Snap the playhead to noteheads horizontally; keep OSMD’s system-spanning
-   * top/height (Standard cursor already covers all staves in the MusicSystem).
-   *
-   * Important: never leave a CSS ``style.height`` / ``style.top`` override —
-   * those beat the ``img.height`` OSMD sets in ``cursor.update()`` and shrink
-   * the bar (e.g. stopping above Bass).
+   * Snap the playhead to noteheads horizontally and to the active system's
+   * staff-line band vertically. OSMD's AbsolutePosition top can drift relative
+   * to the painted SVG later in a score; DOM staff bounds stay truthful.
    */
   _nudgeCursorToNoteheads() {
     const el = this.osmd?.cursor?.cursorElement;
     if (!el) return;
 
-    // Drop prior CSS height overrides so OSMD’s img.height (full system) wins.
-    // Do not clear style.top — cursor.update() just set it.
-    el.style.height = "";
     el.style.maxHeight = "none";
     el.style.maxWidth = "none";
     el.style.objectFit = "fill";
 
     const bounds = this._cursorAlignBounds();
     if (bounds) {
-      el.style.left = `${Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX)}px`;
+      const left = Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX);
+      const top = Math.max(0, bounds.top);
+      const height = Math.max(40, bounds.bottom - bounds.top);
       const osmdW = Number(el.width) || 0;
       const width = Math.max(CURSOR_MIN_WIDTH_PX, bounds.width || 0, osmdW);
+
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
       el.style.width = `${width}px`;
+      el.style.height = `${height}px`;
       if (el.tagName === "IMG" || el.tagName === "img") {
         el.width = width;
+        el.height = height;
       }
-      this._lastCursorGeom = {
-        left: Math.max(0, bounds.left - CURSOR_HEAD_GAP_PX),
-        top: Number.parseFloat(el.style.top) || 0,
-        width,
-        height: Number(el.height) || 0,
-      };
+      this._lastCursorGeom = { left, top, width, height };
     } else if (this._lastCursorGeom) {
       el.style.left = `${this._lastCursorGeom.left}px`;
+      el.style.top = `${this._lastCursorGeom.top}px`;
       el.style.width = `${this._lastCursorGeom.width}px`;
+      el.style.height = `${this._lastCursorGeom.height}px`;
       if (el.tagName === "IMG" || el.tagName === "img") {
         el.width = this._lastCursorGeom.width;
+        el.height = this._lastCursorGeom.height;
       }
     }
   }

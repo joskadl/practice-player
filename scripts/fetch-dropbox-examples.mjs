@@ -95,10 +95,43 @@ function stageMscz(zipPath, entries) {
     fs.rmSync(tmp, { recursive: true, force: true });
     throw new Error("Failed to extract any .mscz files");
   }
-  const fingerprint = createHash("sha256")
+  const scoresFingerprint = createHash("sha256")
     .update(files.map((f) => `${f.name}:${f.sha256}`).join("\n"))
     .digest("hex");
-  return { tmp, files, fingerprint };
+  return { tmp, files, scoresFingerprint };
+}
+
+/**
+ * Pull optional setlist.json from the ZIP (content + sha). Absent → empty sha.
+ * @param {string} zipPath
+ * @param {string[]} entries
+ * @returns {{ sha256: string, buf: Buffer|null }}
+ */
+function stageSetlist(zipPath, entries) {
+  const setlistEntry = entries.find((e) => /(^|\/)setlist\.json$/i.test(e));
+  if (!setlistEntry) return { sha256: "", buf: null };
+  const tmpSet = fs.mkdtempSync(path.join(os.tmpdir(), "pp-setlist-"));
+  try {
+    execFileSync("unzip", ["-o", zipPath, setlistEntry, "-d", tmpSet], {
+      stdio: "pipe",
+    });
+    const extracted = path.join(tmpSet, setlistEntry);
+    if (!fs.existsSync(extracted)) return { sha256: "", buf: null };
+    const buf = fs.readFileSync(extracted);
+    return {
+      sha256: createHash("sha256").update(buf).digest("hex"),
+      buf,
+    };
+  } finally {
+    fs.rmSync(tmpSet, { recursive: true, force: true });
+  }
+}
+
+/** Fingerprint scores + setlist so order-only Dropbox edits still sync. */
+function libraryFingerprint(scoresFingerprint, setlistSha) {
+  return createHash("sha256")
+    .update(`${scoresFingerprint}\nsetlist:${setlistSha || ""}`)
+    .digest("hex");
 }
 
 async function main() {
@@ -120,6 +153,8 @@ async function main() {
   try {
     const entries = listZipPaths(zipPath);
     staged = stageMscz(zipPath, entries);
+    const setlist = stageSetlist(zipPath, entries);
+    const fingerprint = libraryFingerprint(staged.scoresFingerprint, setlist.sha256);
 
     let prevMeta = null;
     if (fs.existsSync(metaPath)) {
@@ -132,23 +167,23 @@ async function main() {
     const prevFingerprint = prevMeta?.fingerprint || null;
     const hadLegacySourceUrl = !!(prevMeta && Object.prototype.hasOwnProperty.call(prevMeta, "sourceUrl"));
 
-    if (prevFingerprint && prevFingerprint === staged.fingerprint) {
+    if (prevFingerprint && prevFingerprint === fingerprint) {
       if (hadLegacySourceUrl) {
-        const meta = publicMeta(staged.fingerprint, staged.files);
+        const meta = publicMeta(fingerprint, staged.files);
         fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
         console.log("Fingerprint unchanged; scrubbed sourceUrl from public metadata.");
         writeStatus({
           changed: true,
-          fingerprint: staged.fingerprint,
+          fingerprint,
           fetchedAt: meta.fetchedAt,
           scrubbedSourceUrl: true,
         });
         return;
       }
-      console.log(`Unchanged (fingerprint ${staged.fingerprint.slice(0, 12)}…).`);
+      console.log(`Unchanged (fingerprint ${fingerprint.slice(0, 12)}…).`);
       writeStatus({
         changed: false,
-        fingerprint: staged.fingerprint,
+        fingerprint,
         fetchedAt: new Date().toISOString(),
       });
       return;
@@ -157,37 +192,30 @@ async function main() {
     fs.mkdirSync(examplesDir, { recursive: true });
     clearManagedExamples(examplesDir);
 
-    const setlistEntry = entries.find((e) => /(^|\/)setlist\.json$/i.test(e));
-    if (setlistEntry) {
-      const tmpSet = fs.mkdtempSync(path.join(os.tmpdir(), "pp-setlist-"));
-      try {
-        execFileSync("unzip", ["-o", zipPath, setlistEntry, "-d", tmpSet], {
-          stdio: "pipe",
-        });
-        const extracted = path.join(tmpSet, setlistEntry);
-        if (fs.existsSync(extracted)) {
-          fs.copyFileSync(extracted, path.join(examplesDir, "setlist.json"));
-          console.log("Copied setlist.json from Dropbox");
-        }
-      } finally {
-        fs.rmSync(tmpSet, { recursive: true, force: true });
-      }
+    const setlistPath = path.join(examplesDir, "setlist.json");
+    if (setlist.buf) {
+      fs.writeFileSync(setlistPath, setlist.buf);
+      console.log("Copied setlist.json from Dropbox");
+    } else if (fs.existsSync(setlistPath)) {
+      fs.unlinkSync(setlistPath);
+      console.log("Removed setlist.json (absent from Dropbox)");
     }
 
     for (const f of staged.files) {
       fs.copyFileSync(f.src, path.join(examplesDir, f.name));
     }
 
-    const meta = publicMeta(staged.fingerprint, staged.files);
+    const meta = publicMeta(fingerprint, staged.files);
     fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
     writeStatus({
       changed: true,
-      fingerprint: staged.fingerprint,
+      fingerprint,
       fetchedAt: meta.fetchedAt,
       fileCount: staged.files.length,
+      setlist: !!setlist.buf,
     });
     console.log(
-      `Wrote ${staged.files.length} .mscz file(s); fingerprint ${staged.fingerprint.slice(0, 12)}…`,
+      `Wrote ${staged.files.length} .mscz file(s); fingerprint ${fingerprint.slice(0, 12)}…`,
     );
   } finally {
     try {

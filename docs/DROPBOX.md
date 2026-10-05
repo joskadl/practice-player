@@ -18,6 +18,10 @@ My choir scores/          ← share this folder (view)
   setlist.json            ← optional order only: ["stille-nacht.mscz", …]
 ```
 
+`setlist.json` may be a JSON array of filenames, or `{ "order": […] }` / `{ "files": […] }`. Unknown entries are ignored; scores missing from the list sort after the setlist (by title). The sync fingerprint includes the setlist, so **order-only edits still redeploy**.
+
+The player’s Open menu follows that order (heading becomes **Setlist** when present). With two or more catalog songs loaded from Examples, **‹ ›** appear beside the title (`n / total`); **Alt+← / Alt+→** step the setlist.
+
 Titles come from the scores after MuseScore → MusicXML conversion.
 
 ## Sync / deploy (maintainers)

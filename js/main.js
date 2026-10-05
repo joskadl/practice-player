@@ -73,6 +73,11 @@ const els = {
   openMenu: document.getElementById("openMenu"),
   openDeviceBtn: document.getElementById("openDeviceBtn"),
   examplesList: document.getElementById("examplesList"),
+  examplesMenuHeading: document.getElementById("examplesMenuHeading"),
+  setlistNav: document.getElementById("setlistNav"),
+  setlistPrevBtn: document.getElementById("setlistPrevBtn"),
+  setlistNextBtn: document.getElementById("setlistNextBtn"),
+  setlistPos: document.getElementById("setlistPos"),
   fileName: document.getElementById("fileName"),
   recordingLink: document.getElementById("recordingLink"),
   recordingEditBtn: document.getElementById("recordingEditBtn"),
@@ -396,6 +401,7 @@ async function applyPackToPlayer(pack, { remoteSha = null, clearUndoStack = true
   await applyProject(parsed, pack.sourceFileName || "shared.musicxml", {
     skipSessionStart: true,
   });
+  clearCurrentExample();
   await session.loadFromPack(pack, { remoteSha, clearUndoStack });
   renderNotes();
   renderHistory();
@@ -433,6 +439,10 @@ let scoreView = "roll";
 let jiEnabled = false;
 /** Cached examples catalog from examples/manifest.json (null until first fetch). */
 let examplesCatalog = null;
+/** True when manifest was ordered from Dropbox setlist.json. */
+let examplesFromSetlist = false;
+/** Active built-in example id, or null when a local/shared file is loaded. */
+let currentExampleId = null;
 /** Original loaded file name (for export naming). */
 let sourceFileName = "";
 /** Deferred PWA install prompt from the browser. */
@@ -1522,10 +1532,12 @@ async function loadFile(file) {
     }
     endBusy();
     await applyProject(parsed, file.name);
+    clearCurrentExample();
   } catch (err) {
     endBusy();
     project = null;
     sourceFileName = "";
+    clearCurrentExample();
     transport.setProject(null);
     roll.setProject(null);
     sheet.clear();
@@ -1553,7 +1565,46 @@ async function fetchExamplesCatalog({ force = false } = {}) {
   if (!res.ok) throw new Error(t("examplesLoadError"));
   const data = await res.json();
   examplesCatalog = Array.isArray(data?.examples) ? data.examples : [];
+  examplesFromSetlist = !!data?.setlist;
   return examplesCatalog;
+}
+
+function exampleIndex() {
+  if (!currentExampleId || !examplesCatalog?.length) return -1;
+  return examplesCatalog.findIndex((ex) => ex.id === currentExampleId);
+}
+
+function updateSetlistNav() {
+  if (!els.setlistNav) return;
+  const idx = exampleIndex();
+  const n = examplesCatalog?.length || 0;
+  const active = idx >= 0 && n >= 2;
+  els.setlistNav.hidden = !active;
+  if (els.setlistPos) {
+    els.setlistPos.textContent = active ? t("setlistPos", { current: idx + 1, total: n }) : "";
+  }
+  if (els.setlistPrevBtn) els.setlistPrevBtn.disabled = !active;
+  if (els.setlistNextBtn) els.setlistNextBtn.disabled = !active;
+}
+
+async function stepSetlist(delta) {
+  if (!examplesCatalog?.length) {
+    try {
+      await fetchExamplesCatalog();
+    } catch {
+      return;
+    }
+  }
+  const idx = exampleIndex();
+  const n = examplesCatalog?.length || 0;
+  if (idx < 0 || n < 2) return;
+  const next = examplesCatalog[(idx + delta + n) % n];
+  if (next) await loadExample(next);
+}
+
+function clearCurrentExample() {
+  currentExampleId = null;
+  updateSetlistNav();
 }
 
 async function populateExamplesMenu() {
@@ -1563,6 +1614,13 @@ async function populateExamplesMenu() {
     // Always revalidate when online so newly published scores appear without
     // waiting for a full app restart (SW serves examples network-first).
     const examples = await fetchExamplesCatalog({ force: navigator.onLine !== false });
+    if (els.examplesMenuHeading) {
+      els.examplesMenuHeading.textContent = examplesFromSetlist ? t("setlist") : t("examples");
+      els.examplesMenuHeading.setAttribute(
+        "data-i18n",
+        examplesFromSetlist ? "setlist" : "examples",
+      );
+    }
     if (!examples.length) {
       const empty = document.createElement("div");
       empty.className = "open-menu-empty";
@@ -1577,6 +1635,10 @@ async function populateExamplesMenu() {
       btn.setAttribute("role", "menuitem");
       btn.textContent = ex.title || ex.file || ex.id;
       if (ex.description) btn.title = ex.description;
+      if (ex.id && ex.id === currentExampleId) {
+        btn.classList.add("is-current");
+        btn.setAttribute("aria-current", "true");
+      }
       btn.addEventListener("click", () => {
         setOpenMenuOpen(false);
         void loadExample(ex);
@@ -1639,6 +1701,8 @@ async function loadExample(ex) {
     }
     endBusy();
     await applyProject(parsed, displayName, { adoptSheet });
+    currentExampleId = ex.id || String(file).replace(/\.mscz$/i, "").toLowerCase();
+    updateSetlistNav();
     // Refill the offscreen slot we just consumed.
     if (isMusicXmlName(file)) exampleCache.scheduleOne(ex);
   } catch (err) {
@@ -1653,6 +1717,7 @@ async function loadExample(ex) {
     }
     project = null;
     sourceFileName = "";
+    clearCurrentExample();
     transport.setProject(null);
     roll.setProject(null);
     sheet.clear();
@@ -1674,6 +1739,13 @@ els.openMenuBtn?.addEventListener("click", () => {
   if (willOpen) void populateExamplesMenu();
 });
 
+els.setlistPrevBtn?.addEventListener("click", () => {
+  void stepSetlist(-1);
+});
+els.setlistNextBtn?.addEventListener("click", () => {
+  void stepSetlist(1);
+});
+
 els.openDeviceBtn?.addEventListener("click", () => {
   setOpenMenuOpen(false);
   els.fileInput?.click();
@@ -1688,6 +1760,16 @@ document.addEventListener("click", (ev) => {
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && els.openMenu && !els.openMenu.hidden) {
     setOpenMenuOpen(false);
+    return;
+  }
+  if (ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
+    if (ev.key === "ArrowLeft") {
+      ev.preventDefault();
+      void stepSetlist(-1);
+    } else if (ev.key === "ArrowRight") {
+      ev.preventDefault();
+      void stepSetlist(1);
+    }
   }
 });
 
@@ -2221,6 +2303,7 @@ if (!project && els.fileName) els.fileName.textContent = t("noFile");
 onLangChange(() => {
   applyDomI18n();
   if (!project && els.fileName) els.fileName.textContent = t("noFile");
+  updateSetlistNav();
   updateTuningUi();
   updateScoreViewUi();
   syncKeyCenterSelect();

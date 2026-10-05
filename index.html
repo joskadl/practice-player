@@ -40,11 +40,16 @@
         <div id="openMenu" class="open-menu-panel" role="menu" hidden>
           <button type="button" id="openDeviceBtn" class="open-menu-item" role="menuitem" data-i18n="openFromDevice">From this device…</button>
           <div class="open-menu-sep" role="separator"></div>
-          <div class="open-menu-heading" data-i18n="examples">Examples</div>
+          <div id="examplesMenuHeading" class="open-menu-heading" data-i18n="examples">Examples</div>
           <div id="examplesList" class="open-menu-examples"></div>
         </div>
         <input id="fileInput" type="file" accept=".mid,.midi,.musicxml,.xml,.mxl,.mscz,.mscx,audio/midi,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml,application/xml,text/xml" hidden />
       </div>
+      <nav id="setlistNav" class="setlist-nav" hidden data-i18n-aria="setlistNav">
+        <button type="button" id="setlistPrevBtn" class="secondary setlist-nav-btn" data-i18n-title="setlistPrev" data-i18n-aria="setlistPrev" aria-label="Previous song">‹</button>
+        <span id="setlistPos" class="setlist-pos" aria-live="polite"></span>
+        <button type="button" id="setlistNextBtn" class="secondary setlist-nav-btn" data-i18n-title="setlistNext" data-i18n-aria="setlistNext" aria-label="Next song">›</button>
+      </nav>
       <span id="fileName" class="file-name">No file loaded</span>
       <a id="recordingLink" class="recording-link" hidden rel="noopener noreferrer" target="_blank" data-i18n-title="recordingLinkTip"></a>
       <button type="button" id="recordingEditBtn" class="secondary recording-edit-btn" hidden data-i18n="recordingEdit" data-i18n-title="recordingEditTip">Recording…</button>

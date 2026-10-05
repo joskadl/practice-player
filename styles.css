@@ -485,6 +485,28 @@ button.secondary,
   color: var(--accent);
 }
 
+.setlist-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.setlist-nav-btn {
+  min-width: 2rem;
+  padding: 0.35rem 0.55rem;
+  line-height: 1;
+  font-size: 1.15rem;
+}
+
+.setlist-pos {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.75rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .file-name {
   color: var(--muted);
   font-size: 0.95rem;
@@ -492,6 +514,11 @@ button.secondary,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.open-menu-item.is-current {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .recording-link {

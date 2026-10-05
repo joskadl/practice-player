@@ -10,7 +10,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const examplesDir = path.join(__dirname, "..", "examples");
+const examplesDir = process.env.EXAMPLES_DIR
+  ? path.resolve(process.env.EXAMPLES_DIR)
+  : path.join(__dirname, "..", "examples");
 
 function titleFromMusicXml(xmlPath) {
   if (!fs.existsSync(xmlPath)) return null;
@@ -70,7 +72,8 @@ function main() {
     };
   });
 
-  if (order) {
+  const fromSetlist = !!(order && order.size);
+  if (fromSetlist) {
     examples.sort((a, b) => {
       const ai = order.has(a.id) ? order.get(a.id) : 1e9;
       const bi = order.has(b.id) ? order.get(b.id) : 1e9;
@@ -79,13 +82,19 @@ function main() {
     });
   }
 
+  /** @type {{examples: typeof examples, setlist?: boolean}} */
   const out = { examples };
+  if (fromSetlist) out.setlist = true;
   fs.writeFileSync(
     path.join(examplesDir, "manifest.json"),
     `${JSON.stringify(out, null, 2)}\n`,
     "utf8",
   );
-  console.log(`Wrote manifest.json (${examples.length} example${examples.length === 1 ? "" : "s"})`);
+  console.log(
+    `Wrote manifest.json (${examples.length} example${examples.length === 1 ? "" : "s"}${
+      fromSetlist ? ", setlist order" : ""
+    })`,
+  );
 }
 
 main();
