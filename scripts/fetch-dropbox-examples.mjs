@@ -120,6 +120,32 @@ async function main() {
     }
 
     if (prevFingerprint && prevFingerprint === staged.fingerprint) {
+      let prevMeta = {};
+      try {
+        prevMeta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+      } catch {
+        /* ignore */
+      }
+      const sourceUrl = dropboxShareDisplayUrl(url);
+      const sourceChanged = prevMeta.sourceUrl !== sourceUrl;
+      if (sourceChanged) {
+        const meta = {
+          ...prevMeta,
+          sourceUrl,
+          fetchedAt: new Date().toISOString(),
+          fingerprint: staged.fingerprint,
+          files: staged.files.map(({ name, bytes, sha256 }) => ({ name, bytes, sha256 })),
+        };
+        fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+        console.log(`Fingerprint unchanged; updated sourceUrl → ${sourceUrl}`);
+        writeStatus({
+          changed: true,
+          fingerprint: staged.fingerprint,
+          fetchedAt: meta.fetchedAt,
+          sourceUrlOnly: true,
+        });
+        return;
+      }
       console.log(`Unchanged (fingerprint ${staged.fingerprint.slice(0, 12)}…).`);
       writeStatus({
         changed: false,
