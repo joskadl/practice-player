@@ -1,6 +1,6 @@
 {
-  "fetchedAt": "2026-10-05T07:58:20.760Z",
-  "fingerprint": "f15f4475dc410cd9fa2aa223dfad689a1051029f2a7a644369f05f59820acfc5",
+  "fetchedAt": "2026-10-05T11:21:46.731Z",
+  "fingerprint": "31145af1163d2bf98cee8353fe49ecd24f65388f52ffe19a9f1d601e85c72bd2",
   "files": [
     {
       "name": "blue-christmas-for-barbershopers.mscz",
@@ -26,6 +26,11 @@
       "name": "gloria-in-excelsis-deo.mscz",
       "bytes": 84972,
       "sha256": "da120492ea599b82f6fda824e2f51ff56b775ea128f0d32d1a1b7b8fb7dd8cc6"
+    },
+    {
+      "name": "hoe-leit-dit-kindeke.mscz",
+      "bytes": 77132,
+      "sha256": "524b4d67901fdba2c4f89761ca8ab1c3ddb87c80f061d461aaf5059a51d8bc1d"
     },
     {
       "name": "please-come-home-for-christmas.mscz",
