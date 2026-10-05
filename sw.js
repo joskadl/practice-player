@@ -6,7 +6,7 @@
  * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v53";
+const CACHE = "midi-practice-player-v54";
 
 const PRECACHE = [
   "./",
