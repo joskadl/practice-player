@@ -115,6 +115,10 @@ const els = {
   sheetFsZoomInBtn: document.getElementById("sheetFsZoomInBtn"),
   sheetSaveBtn: document.getElementById("sheetSaveBtn"),
   sheetAnnotBar: document.getElementById("sheetAnnotBar"),
+  viewModeScore: document.getElementById("viewModeScore"),
+  viewModeLyrics: document.getElementById("viewModeLyrics"),
+  viewModeCustom: document.getElementById("viewModeCustom"),
+  sheetLayerCustom: document.getElementById("sheetLayerCustom"),
   layerStavesBtn: document.getElementById("layerStavesBtn"),
   layerLyricsBtn: document.getElementById("layerLyricsBtn"),
   layerChordsBtn: document.getElementById("layerChordsBtn"),
@@ -765,6 +769,7 @@ async function applyMutatedMusicXml(xml, opts = {}) {
   updateSheetToolbar();
   updateRecordingUi(xml);
   updateRemarksUi(xml);
+  viewModeUi = detectViewMode(sheet.getLayers());
   syncAnnotBar(sheet.getLayers());
   if (opts.label) void recordSharedEdit(opts.label);
 }
@@ -786,6 +791,34 @@ async function editRecordingUrl() {
   }
 }
 
+const VIEW_LAYER_PRESETS = {
+  score: { staves: true, lyrics: true, chords: true, notes: true },
+  lyrics: { staves: false, lyrics: true, chords: false, notes: false },
+};
+
+/** @type {"score"|"lyrics"|"custom"} */
+let viewModeUi = "score";
+
+/**
+ * @param {{staves?:boolean, lyrics?:boolean, chords?:boolean, notes?:boolean}} layers
+ * @returns {"score"|"lyrics"|"custom"}
+ */
+function detectViewMode(layers) {
+  const L = layers || {};
+  const on = (k, v) => (L[k] !== false) === v;
+  for (const [name, preset] of Object.entries(VIEW_LAYER_PRESETS)) {
+    if (
+      on("staves", preset.staves)
+      && on("lyrics", preset.lyrics)
+      && on("chords", preset.chords)
+      && on("notes", preset.notes)
+    ) {
+      return /** @type {"score"|"lyrics"} */ (name);
+    }
+  }
+  return "custom";
+}
+
 function syncAnnotBar(layers) {
   const L = layers || sheet.getLayers?.() || {};
   const map = [
@@ -798,19 +831,59 @@ function syncAnnotBar(layers) {
     if (!btn) continue;
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   }
+
+  const derived = detectViewMode(L);
+  // Preset buttons own the mode; layer toggles force Custom. Otherwise follow layers.
+  if (viewModeUi !== "custom") {
+    viewModeUi = derived;
+  }
+
+  const modeBtns = [
+    [els.viewModeScore, "score"],
+    [els.viewModeLyrics, "lyrics"],
+    [els.viewModeCustom, "custom"],
+  ];
+  for (const [btn, mode] of modeBtns) {
+    if (!btn) continue;
+    btn.setAttribute("aria-checked", viewModeUi === mode ? "true" : "false");
+  }
+  if (els.sheetLayerCustom) {
+    els.sheetLayerCustom.hidden = viewModeUi !== "custom";
+  }
 }
 
-function syncAnnotModeButtons(mode) {
-  if (els.addChordBtn) els.addChordBtn.setAttribute("aria-pressed", mode === "chord" ? "true" : "false");
-  if (els.addNoteBtn) els.addNoteBtn.setAttribute("aria-pressed", mode === "note" ? "true" : "false");
+/**
+ * @param {"score"|"lyrics"|"custom"} mode
+ */
+function setViewMode(mode) {
+  if (!sheet.hasScore()) return;
+  if (mode === "custom") {
+    viewModeUi = "custom";
+    syncAnnotBar(sheet.getLayers());
+    return;
+  }
+  const preset = VIEW_LAYER_PRESETS[mode];
+  if (!preset) return;
+  viewModeUi = mode;
+  void sheet.setLayers({ ...preset });
 }
 
 function wireLayerToggle(btn, key) {
   btn?.addEventListener("click", () => {
     if (!sheet.hasScore()) return;
+    viewModeUi = "custom";
     const cur = sheet.getLayers();
     void sheet.setLayers({ [key]: !cur[key] });
   });
+}
+
+function wireViewModeButton(btn, mode) {
+  btn?.addEventListener("click", () => setViewMode(mode));
+}
+
+function syncAnnotModeButtons(mode) {
+  if (els.addChordBtn) els.addChordBtn.setAttribute("aria-pressed", mode === "chord" ? "true" : "false");
+  if (els.addNoteBtn) els.addNoteBtn.setAttribute("aria-pressed", mode === "note" ? "true" : "false");
 }
 
 function exportBaseName() {
@@ -1710,6 +1783,9 @@ els.recordingEditBtn?.addEventListener("click", () => {
   void editRecordingUrl();
 });
 
+wireViewModeButton(els.viewModeScore, "score");
+wireViewModeButton(els.viewModeLyrics, "lyrics");
+wireViewModeButton(els.viewModeCustom, "custom");
 wireLayerToggle(els.layerStavesBtn, "staves");
 wireLayerToggle(els.layerLyricsBtn, "lyrics");
 wireLayerToggle(els.layerChordsBtn, "chords");

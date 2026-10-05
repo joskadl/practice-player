@@ -752,11 +752,69 @@ select {
   margin: 0 0 0.45rem;
 }
 
+.sheet-view-mode {
+  display: inline-flex;
+  flex: 1 1 12rem;
+  max-width: 22rem;
+  min-width: min(100%, 11rem);
+  padding: 0.18rem;
+  gap: 0.15rem;
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.view-mode-btn {
+  flex: 1 1 0;
+  min-height: 2.55rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.15;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.view-mode-btn:hover,
+.view-mode-btn:focus-visible {
+  background: color-mix(in srgb, var(--panel, #fff) 70%, transparent);
+  outline: none;
+}
+
+.view-mode-btn[aria-checked="true"] {
+  background: var(--panel, #fff);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 16%, transparent);
+}
+
+.sheet-layer-custom {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.sheet-layer-custom[hidden] {
+  display: none !important;
+}
+
 .annot-toggles,
 .annot-add {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
+}
+
+.annot-toggle {
+  min-height: 2.35rem;
 }
 
 .annot-toggle[aria-pressed="false"] {
@@ -1236,5 +1294,24 @@ button.swatch {
   .hint.tight {
     text-align: left;
     max-width: none;
+  }
+  .sheet-annot-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sheet-view-mode {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+  .view-mode-btn {
+    min-height: 2.75rem;
+    font-size: 0.95rem;
+  }
+  .annot-add {
+    width: 100%;
+  }
+  .annot-add button {
+    flex: 1 1 auto;
+    min-height: 2.5rem;
   }
 }

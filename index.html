@@ -128,11 +128,18 @@
           <span class="sheet-fs-hint" data-i18n="fullscreenEscHint">Esc to exit</span>
         </div>
         <div id="sheetAnnotBar" class="sheet-annot-bar" hidden>
-          <div class="annot-toggles" role="group" data-i18n-aria="layers">
-            <button type="button" id="layerStavesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="staves" data-i18n-title="stavesTip">Staves</button>
-            <button type="button" id="layerLyricsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="lyrics" data-i18n-title="lyricsTip">Lyrics</button>
-            <button type="button" id="layerChordsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="chords" data-i18n-title="chordsTip">Chords</button>
-            <button type="button" id="layerNotesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="notesLayer" data-i18n-title="notesLayerTip">Notes</button>
+          <div class="sheet-view-mode" role="radiogroup" data-i18n-aria="viewMode">
+            <button type="button" role="radio" id="viewModeScore" class="view-mode-btn" aria-checked="true" data-i18n="viewModeScore" data-i18n-title="viewModeScoreTip">Score</button>
+            <button type="button" role="radio" id="viewModeLyrics" class="view-mode-btn" aria-checked="false" data-i18n="viewModeLyrics" data-i18n-title="viewModeLyricsTip">Lyrics</button>
+            <button type="button" role="radio" id="viewModeCustom" class="view-mode-btn" aria-checked="false" data-i18n="viewModeCustom" data-i18n-title="viewModeCustomTip">Custom</button>
+          </div>
+          <div id="sheetLayerCustom" class="sheet-layer-custom" hidden>
+            <div class="annot-toggles" role="group" data-i18n-aria="layers">
+              <button type="button" id="layerStavesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="staves" data-i18n-title="stavesTip">Staves</button>
+              <button type="button" id="layerLyricsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="lyrics" data-i18n-title="lyricsTip">Lyrics</button>
+              <button type="button" id="layerChordsBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="chords" data-i18n-title="chordsTip">Chords</button>
+              <button type="button" id="layerNotesBtn" class="secondary annot-toggle" aria-pressed="true" data-i18n="notesLayer" data-i18n-title="notesLayerTip">Notes</button>
+            </div>
           </div>
           <div class="annot-add" role="group" data-i18n-aria="addAnnotations">
             <button type="button" id="addChordBtn" class="secondary" data-i18n="addChord" data-i18n-title="addChordTip">+ Chord</button>
