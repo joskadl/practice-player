@@ -873,7 +873,8 @@ select {
 }
 
 /* Keep lyrics, chord symbols, practice notes, and the playhead when staves are off.
-   Must beat `svg path`/`[class*="vf-"]` specificity so text inside .lyrics stays visible. */
+   Must beat `svg path`/`[class*="vf-"]` specificity so text inside .lyrics stays visible.
+   Cursor is an <img> sibling of the SVG — keep it visible and above text. */
 .sheet-music.pp-hide-staves .lyrics,
 .sheet-music.pp-hide-staves .lyrics *,
 .sheet-music.pp-hide-staves .lyrics[class*="vf-"],
@@ -900,8 +901,17 @@ select {
 .sheet-music.pp-hide-staves svg .pp-annot-note tspan,
 .sheet-music.pp-hide-staves .osmd-cursor,
 .sheet-music.pp-hide-staves img.osmd-cursor,
+.sheet-music.pp-hide-staves img[id^="cursorImg-"],
 .sheet-music.pp-hide-staves .cursor {
   visibility: visible !important;
+}
+
+.sheet-music.pp-hide-staves img[id^="cursorImg-"],
+.sheet-music.pp-hide-staves img.osmd-cursor,
+.sheet-music.pp-hide-staves .osmd-cursor {
+  display: block !important;
+  opacity: 1 !important;
+  z-index: 20 !important;
 }
 
 /* Playhead bar — geometry is set in JS to match the active system. */
@@ -918,8 +928,8 @@ select {
   display: none !important;
 }
 
-/* Duplicate lyric lines on non-carrier parts (keep a single set). */
-.sheet-music .pp-lyrics-suppressed {
+/* Lyrics-only mode: hide duplicate lyric lines on non-carrier parts. */
+.sheet-music.pp-hide-staves .pp-lyrics-suppressed {
   display: none !important;
 }
 
