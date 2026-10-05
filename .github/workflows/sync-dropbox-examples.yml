@@ -1,20 +1,14 @@
 # Pull .mscz scores from a public Dropbox shared folder, convert to MusicXML,
 # regenerate the examples catalog, commit, and let Pages deploy.
 #
-# Dropbox: no token — folder shared link (?dl=1 ZIP).
+# Dropbox: no API token — folder shared link (?dl=1 ZIP).
+# The share URL lives only in Actions secret DROPBOX_EXAMPLES_URL (never in the
+# published site, workflow inputs, or examples/.dropbox-sync.json).
 # Trigger: workflow_dispatch (app Sync button / Actions UI) or repository_dispatch.
-#
-# Secrets / vars:
-#   DROPBOX_EXAMPLES_URL — default folder URL when the dispatch input is empty
 name: Sync Dropbox examples
 
 on:
   workflow_dispatch:
-    inputs:
-      dropbox_url:
-        description: Dropbox shared folder URL (optional; falls back to DROPBOX_EXAMPLES_URL)
-        required: false
-        type: string
   repository_dispatch:
     types: [sync-dropbox-examples]
 
@@ -40,21 +34,18 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve Dropbox URL
-        id: url
+      - name: Require Dropbox URL secret
         env:
-          INPUT_URL: ${{ github.event.inputs.dropbox_url || github.event.client_payload.dropbox_url }}
-          SECRET_URL: ${{ secrets.DROPBOX_EXAMPLES_URL }}
-          VAR_URL: ${{ vars.DROPBOX_EXAMPLES_URL }}
+          DROPBOX_EXAMPLES_URL: ${{ secrets.DROPBOX_EXAMPLES_URL }}
         run: |
-          URL="${INPUT_URL:-}"
-          if [ -z "$URL" ]; then URL="${SECRET_URL:-}"; fi
-          if [ -z "$URL" ]; then URL="${VAR_URL:-}"; fi
-          if [ -z "$URL" ]; then
-            echo "::error::No Dropbox URL. Pass workflow input dropbox_url or set secret/var DROPBOX_EXAMPLES_URL."
+          if [ -z "${DROPBOX_EXAMPLES_URL}" ]; then
+            echo "::error::Set repository secret DROPBOX_EXAMPLES_URL (Settings → Secrets → Actions)."
             exit 1
           fi
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          # Mask common variants so they do not appear in logs if echoed.
+          echo "::add-mask::${DROPBOX_EXAMPLES_URL}"
+          echo "::add-mask::${DROPBOX_EXAMPLES_URL/dl=0/dl=1}"
+          echo "::add-mask::${DROPBOX_EXAMPLES_URL/dl=1/dl=0}"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -63,7 +54,7 @@ jobs:
 
       - name: Fetch .mscz from Dropbox
         env:
-          DROPBOX_EXAMPLES_URL: ${{ steps.url.outputs.url }}
+          DROPBOX_EXAMPLES_URL: ${{ secrets.DROPBOX_EXAMPLES_URL }}
         run: node scripts/fetch-dropbox-examples.mjs
 
       - name: Detect unchanged library

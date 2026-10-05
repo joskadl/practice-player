@@ -5,10 +5,13 @@
  *
  *   node scripts/fetch-dropbox-examples.mjs <dropbox-shared-folder-url>
  *
- * Env: DROPBOX_EXAMPLES_URL — used when no CLI arg is given.
+ * Env: DROPBOX_EXAMPLES_URL — used when no CLI arg is given (prefer GitHub Actions secret).
+ *
+ * Published metadata (examples/.dropbox-sync.json) never includes the folder URL.
  *
  * If the library fingerprint matches examples/.dropbox-sync.json, exits 0 and
- * writes examples/.dropbox-sync-status.json { changed: false } without touching scores.
+ * writes examples/.dropbox-sync-status.json { changed: false } without touching scores
+ * (unless legacy sourceUrl must be scrubbed from metadata).
  */
 import fs from "fs";
 import path from "path";
@@ -16,7 +19,7 @@ import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 import { execFileSync } from "child_process";
 import os from "os";
-import { dropboxShareDisplayUrl, normalizeDropboxDlUrl } from "./lib/dropbox-url.mjs";
+import { normalizeDropboxDlUrl } from "./lib/dropbox-url.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -35,6 +38,14 @@ function listZipPaths(zipPath) {
 function writeStatus(status) {
   fs.mkdirSync(examplesDir, { recursive: true });
   fs.writeFileSync(statusPath, `${JSON.stringify(status, null, 2)}\n`, "utf8");
+}
+
+function publicMeta(fingerprint, files, fetchedAt = new Date().toISOString()) {
+  return {
+    fetchedAt,
+    fingerprint,
+    files: files.map(({ name, bytes, sha256 }) => ({ name, bytes, sha256 })),
+  };
 }
 
 function clearManagedExamples(dir) {
@@ -110,39 +121,27 @@ async function main() {
     const entries = listZipPaths(zipPath);
     staged = stageMscz(zipPath, entries);
 
-    let prevFingerprint = null;
+    let prevMeta = null;
     if (fs.existsSync(metaPath)) {
-      try {
-        prevFingerprint = JSON.parse(fs.readFileSync(metaPath, "utf8")).fingerprint || null;
-      } catch {
-        /* ignore */
-      }
-    }
-
-    if (prevFingerprint && prevFingerprint === staged.fingerprint) {
-      let prevMeta = {};
       try {
         prevMeta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
       } catch {
         /* ignore */
       }
-      const sourceUrl = dropboxShareDisplayUrl(url);
-      const sourceChanged = prevMeta.sourceUrl !== sourceUrl;
-      if (sourceChanged) {
-        const meta = {
-          ...prevMeta,
-          sourceUrl,
-          fetchedAt: new Date().toISOString(),
-          fingerprint: staged.fingerprint,
-          files: staged.files.map(({ name, bytes, sha256 }) => ({ name, bytes, sha256 })),
-        };
+    }
+    const prevFingerprint = prevMeta?.fingerprint || null;
+    const hadLegacySourceUrl = !!(prevMeta && Object.prototype.hasOwnProperty.call(prevMeta, "sourceUrl"));
+
+    if (prevFingerprint && prevFingerprint === staged.fingerprint) {
+      if (hadLegacySourceUrl) {
+        const meta = publicMeta(staged.fingerprint, staged.files);
         fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
-        console.log(`Fingerprint unchanged; updated sourceUrl → ${sourceUrl}`);
+        console.log("Fingerprint unchanged; scrubbed sourceUrl from public metadata.");
         writeStatus({
           changed: true,
           fingerprint: staged.fingerprint,
           fetchedAt: meta.fetchedAt,
-          sourceUrlOnly: true,
+          scrubbedSourceUrl: true,
         });
         return;
       }
@@ -179,12 +178,7 @@ async function main() {
       fs.copyFileSync(f.src, path.join(examplesDir, f.name));
     }
 
-    const meta = {
-      sourceUrl: dropboxShareDisplayUrl(url),
-      fetchedAt: new Date().toISOString(),
-      fingerprint: staged.fingerprint,
-      files: staged.files.map(({ name, bytes, sha256 }) => ({ name, bytes, sha256 })),
-    };
+    const meta = publicMeta(staged.fingerprint, staged.files);
     fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
     writeStatus({
       changed: true,

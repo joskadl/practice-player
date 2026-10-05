@@ -160,7 +160,6 @@ const els = {
   noteInput: document.getElementById("noteInput"),
   noteAddBtn: document.getElementById("noteAddBtn"),
   historyList: document.getElementById("historyList"),
-  dropboxUrl: document.getElementById("dropboxUrl"),
   libGhOwner: document.getElementById("libGhOwner"),
   libGhRepo: document.getElementById("libGhRepo"),
   libGhBranch: document.getElementById("libGhBranch"),
@@ -380,7 +379,6 @@ function fillSyncSettingsForm() {
   if (els.ghBranch) els.ghBranch.value = syncSettings.githubBranch || "main";
   if (els.ghToken) els.ghToken.value = syncSettings.githubToken || "";
   if (els.remoteUrl) els.remoteUrl.value = syncSettings.remoteUrl || "";
-  if (els.dropboxUrl) els.dropboxUrl.value = syncSettings.dropboxUrl || "";
   if (els.libGhOwner) els.libGhOwner.value = syncSettings.githubOwner || "";
   if (els.libGhRepo) els.libGhRepo.value = syncSettings.githubRepo || "";
   if (els.libGhBranch) els.libGhBranch.value = syncSettings.githubBranch || "main";
@@ -396,7 +394,7 @@ async function readSyncSettingsFromForm() {
     githubBranch: els.ghBranch?.value.trim() || els.libGhBranch?.value.trim() || "main",
     githubToken: els.ghToken?.value.trim() || els.libGhToken?.value.trim() || "",
     remoteUrl: els.remoteUrl?.value.trim() || "",
-    dropboxUrl: els.dropboxUrl?.value.trim() || "",
+    dropboxUrl: "",
   };
   await saveSyncSettings(syncSettings);
   fillSyncSettingsForm();
@@ -410,7 +408,7 @@ async function readLibrarySettingsFromForm() {
     githubRepo: els.libGhRepo?.value.trim() || syncSettings.githubRepo || "",
     githubBranch: els.libGhBranch?.value.trim() || syncSettings.githubBranch || "main",
     githubToken: els.libGhToken?.value.trim() || syncSettings.githubToken || "",
-    dropboxUrl: els.dropboxUrl?.value.trim() || "",
+    dropboxUrl: "",
   };
   await saveSyncSettings(syncSettings);
   fillSyncSettingsForm();
@@ -444,10 +442,6 @@ async function runDropboxScoreSync() {
   await readLibrarySettingsFromForm();
   if (!syncSettings.githubToken || !syncSettings.githubOwner || !syncSettings.githubRepo) {
     setDropboxSyncStatus(t("dropboxSyncNeedGithub"), true);
-    return;
-  }
-  if (!syncSettings.dropboxUrl) {
-    setDropboxSyncStatus(t("dropboxSyncNeedUrl"), true);
     return;
   }
 

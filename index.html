@@ -65,11 +65,7 @@
       <span id="status" class="status" aria-live="polite"></span>
       <details class="library-sync" id="librarySync">
         <summary data-i18n="librarySync">Score library (Dropbox)</summary>
-        <p class="hint tight" data-i18n="librarySyncHelp">Public Dropbox folder of .mscz files. Sync runs MuseScore conversion + redeploy on GitHub (no Dropbox token). Needs a GitHub token with Actions write.</p>
-        <label class="sheet-edit-field">
-          <span data-i18n="dropboxUrl">Dropbox folder URL</span>
-          <input id="dropboxUrl" type="url" placeholder="https://www.dropbox.com/sh/…" autocomplete="off" />
-        </label>
+        <p class="hint tight" data-i18n="librarySyncHelp">Sync pulls .mscz from a Dropbox folder stored as a GitHub Actions secret, converts with MuseScore, and redeploys. Needs a GitHub token with Actions write (URL stays server-side).</p>
         <div class="sync-settings-grid">
           <label class="sheet-edit-field"><span data-i18n="owner">Owner</span><input id="libGhOwner" type="text" placeholder="username" autocomplete="off" /></label>
           <label class="sheet-edit-field"><span data-i18n="repo">Repo</span><input id="libGhRepo" type="text" placeholder="practice-player" autocomplete="off" /></label>

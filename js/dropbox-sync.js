@@ -1,8 +1,9 @@
 /**
  * Trigger / poll the GitHub Action that syncs examples from a public Dropbox folder.
  *
- * Dropbox itself needs no token (public folder ZIP). Triggering the workflow needs a
- * GitHub token with Actions: Read + Write on the practice-player repo (stored in Sync settings).
+ * The Dropbox folder URL stays on the server (repo Actions secret DROPBOX_EXAMPLES_URL).
+ * Triggering the workflow needs a GitHub token with Actions: Read + Write on the
+ * practice-player repo (stored in Sync settings on this device only).
  */
 
 const WORKFLOW_FILE = "sync-dropbox-examples.yml";
@@ -13,7 +14,6 @@ const WORKFLOW_FILE = "sync-dropbox-examples.yml";
  *   githubRepo: string,
  *   githubBranch?: string,
  *   githubToken: string,
- *   dropboxUrl?: string,
  * }} DropboxSyncSettings
  */
 
@@ -25,7 +25,6 @@ export function dropboxSyncConfigured(settings) {
     settings?.githubOwner?.trim()
     && settings?.githubRepo?.trim()
     && settings?.githubToken?.trim()
-    && (settings?.dropboxUrl?.trim() || true) // URL may live only in repo secret
   );
 }
 
@@ -114,17 +113,14 @@ export async function triggerDropboxSync(settings) {
   }
 
   const branch = (settings.githubBranch || "main").trim() || "main";
-  const dropboxUrl = (settings.dropboxUrl || "").trim();
+  // Do not send the Dropbox URL from the browser — it lives in Actions secrets only.
   await ghApi(
     settings,
     `/actions/workflows/${encodeURIComponent(WORKFLOW_FILE)}/dispatches`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ref: branch,
-        inputs: dropboxUrl ? { dropbox_url: dropboxUrl } : {},
-      }),
+      body: JSON.stringify({ ref: branch }),
     },
   );
 
