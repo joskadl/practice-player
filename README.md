@@ -269,7 +269,7 @@ Prefer **marker-only Standard export** from JustPlay for practice; this app synt
 
 Open → **Examples** loads from `examples/manifest.json`. Example **sources** are MuseScore `.mscz` files; the app loads a sibling pre-converted `.musicxml` (generated with the MuseScore CLI). After startup the app idle-warms examples: all are fetched/parsed, and a size-capped set is OSMD-pre-rendered offscreen so switching between them feels instant. Runtime webmscore conversion is only a fallback for user-opened `.mscz` files — it is unreliable for MuseScore 4 scores.
 
-**Dropbox library:** maintainers keep `.mscz` files in a Dropbox folder whose share URL is a GitHub Actions **secret** (`DROPBOX_EXAMPLES_URL`). Use **Score library (Dropbox) → Sync scores from Dropbox** (or the `Sync Dropbox examples` Action) to convert and redeploy Pages. The app never exposes the Dropbox URL. A GitHub PAT with Actions write is required on the maintainer device. See [docs/DROPBOX.md](docs/DROPBOX.md).
+**Dropbox library:** maintainers keep `.mscz` files in a Dropbox folder whose share URL is the GitHub Actions secret `DROPBOX_EXAMPLES_URL`. The **Sync Dropbox examples** workflow runs every 15 minutes (and on demand) to convert and redeploy Pages when the folder changes. Same app version is fine; the sync job bumps the service-worker cache when files change. See [docs/DROPBOX.md](docs/DROPBOX.md).
 
 ---
 

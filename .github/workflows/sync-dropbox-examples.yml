@@ -4,10 +4,13 @@
 # Dropbox: no API token — folder shared link (?dl=1 ZIP).
 # The share URL lives only in Actions secret DROPBOX_EXAMPLES_URL (never in the
 # published site, workflow inputs, or examples/.dropbox-sync.json).
-# Trigger: workflow_dispatch (app Sync button / Actions UI) or repository_dispatch.
+# Triggers: schedule (every 15 min), workflow_dispatch, repository_dispatch.
 name: Sync Dropbox examples
 
 on:
+  schedule:
+    # GitHub may delay schedules under load; fingerprint skip keeps no-ops cheap.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
   repository_dispatch:
     types: [sync-dropbox-examples]

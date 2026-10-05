@@ -153,7 +153,6 @@ const SETTINGS_KEY = "sync-settings";
  *   githubBranch: string,
  *   githubToken: string,
  *   remoteUrl: string,
- *   dropboxUrl: string,
  * }} SyncSettings */
 
 /** @returns {SyncSettings} */
@@ -166,7 +165,6 @@ export function defaultSyncSettings() {
     githubBranch: "main",
     githubToken: "",
     remoteUrl: "",
-    dropboxUrl: "",
   };
 }
 

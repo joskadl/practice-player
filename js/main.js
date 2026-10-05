@@ -33,11 +33,6 @@ import { Transport } from "./transport.js";
 import { PianoRoll, channelColor } from "./piano-roll.js";
 import { SheetView } from "./sheet-view.js";
 import { ExamplePrerenderCache } from "./example-prerender.js";
-import {
-  triggerDropboxSync,
-  waitForWorkflowRun,
-  findActiveDropboxSyncRun,
-} from "./dropbox-sync.js";
 import { APP_VERSION_LABEL } from "./version.js";
 import {
   checkForAppUpdate,
@@ -160,13 +155,6 @@ const els = {
   noteInput: document.getElementById("noteInput"),
   noteAddBtn: document.getElementById("noteAddBtn"),
   historyList: document.getElementById("historyList"),
-  libGhOwner: document.getElementById("libGhOwner"),
-  libGhRepo: document.getElementById("libGhRepo"),
-  libGhBranch: document.getElementById("libGhBranch"),
-  libGhToken: document.getElementById("libGhToken"),
-  librarySettingsSave: document.getElementById("librarySettingsSave"),
-  dropboxSyncBtn: document.getElementById("dropboxSyncBtn"),
-  dropboxSyncStatus: document.getElementById("dropboxSyncStatus"),
 };
 
 const synth = new ChoirSynth();
@@ -379,129 +367,21 @@ function fillSyncSettingsForm() {
   if (els.ghBranch) els.ghBranch.value = syncSettings.githubBranch || "main";
   if (els.ghToken) els.ghToken.value = syncSettings.githubToken || "";
   if (els.remoteUrl) els.remoteUrl.value = syncSettings.remoteUrl || "";
-  if (els.libGhOwner) els.libGhOwner.value = syncSettings.githubOwner || "";
-  if (els.libGhRepo) els.libGhRepo.value = syncSettings.githubRepo || "";
-  if (els.libGhBranch) els.libGhBranch.value = syncSettings.githubBranch || "main";
-  if (els.libGhToken) els.libGhToken.value = syncSettings.githubToken || "";
 }
 
 async function readSyncSettingsFromForm() {
   syncSettings = {
     author: els.syncAuthorInput?.value.trim() || "",
-    githubOwner: els.ghOwner?.value.trim() || els.libGhOwner?.value.trim() || "",
-    githubRepo: els.ghRepo?.value.trim() || els.libGhRepo?.value.trim() || "",
+    githubOwner: els.ghOwner?.value.trim() || "",
+    githubRepo: els.ghRepo?.value.trim() || "",
     githubPath: els.ghPath?.value.trim() || "shared/",
-    githubBranch: els.ghBranch?.value.trim() || els.libGhBranch?.value.trim() || "main",
-    githubToken: els.ghToken?.value.trim() || els.libGhToken?.value.trim() || "",
+    githubBranch: els.ghBranch?.value.trim() || "main",
+    githubToken: els.ghToken?.value.trim() || "",
     remoteUrl: els.remoteUrl?.value.trim() || "",
-    dropboxUrl: "",
   };
   await saveSyncSettings(syncSettings);
   fillSyncSettingsForm();
   updateSyncUi();
-}
-
-async function readLibrarySettingsFromForm() {
-  syncSettings = {
-    ...syncSettings,
-    githubOwner: els.libGhOwner?.value.trim() || syncSettings.githubOwner || "",
-    githubRepo: els.libGhRepo?.value.trim() || syncSettings.githubRepo || "",
-    githubBranch: els.libGhBranch?.value.trim() || syncSettings.githubBranch || "main",
-    githubToken: els.libGhToken?.value.trim() || syncSettings.githubToken || "",
-    dropboxUrl: "",
-  };
-  await saveSyncSettings(syncSettings);
-  fillSyncSettingsForm();
-}
-
-function setDropboxSyncStatus(msg, isError = false) {
-  if (!els.dropboxSyncStatus) return;
-  els.dropboxSyncStatus.textContent = msg || "";
-  els.dropboxSyncStatus.classList.toggle("error", !!isError);
-}
-
-/** @type {boolean} */
-let dropboxSyncBusy = false;
-
-async function fetchLibraryFingerprint() {
-  try {
-    const res = await fetch("./examples/.dropbox-sync.json", { cache: "no-store" });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.fingerprint || null;
-  } catch {
-    return null;
-  }
-}
-
-async function runDropboxScoreSync() {
-  if (dropboxSyncBusy) {
-    setDropboxSyncStatus(t("dropboxSyncAlreadyRunning"));
-    return;
-  }
-  await readLibrarySettingsFromForm();
-  if (!syncSettings.githubToken || !syncSettings.githubOwner || !syncSettings.githubRepo) {
-    setDropboxSyncStatus(t("dropboxSyncNeedGithub"), true);
-    return;
-  }
-
-  dropboxSyncBusy = true;
-  if (els.dropboxSyncBtn) els.dropboxSyncBtn.disabled = true;
-  const fingerprintBefore = await fetchLibraryFingerprint();
-  try {
-    setDropboxSyncStatus(t("dropboxSyncChecking"));
-    const result = await triggerDropboxSync(syncSettings);
-    let run = result.run;
-    if (!result.started && result.reason === "already_running") {
-      setDropboxSyncStatus(t("dropboxSyncJoinRunning"));
-    } else if (result.started) {
-      setDropboxSyncStatus(t("dropboxSyncStarted"));
-    }
-    if (!run) {
-      run = await findActiveDropboxSyncRun(syncSettings);
-    }
-    if (!run?.id) {
-      // Dispatch accepted but run not listed yet — wait briefly for it.
-      for (let i = 0; i < 15 && !run; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        run = await findActiveDropboxSyncRun(syncSettings);
-      }
-    }
-    if (run?.id) {
-      const finished = await waitForWorkflowRun(syncSettings, run.id, {
-        onTick: (r) => {
-          const st = r.status === "completed" ? r.conclusion : r.status;
-          setDropboxSyncStatus(t("dropboxSyncProgress", { status: st || "…" }));
-        },
-      });
-      if (finished.conclusion !== "success") {
-        throw new Error(
-          t("dropboxSyncFailed", { status: finished.conclusion || finished.status }),
-        );
-      }
-    }
-
-    // Pages deploy follows a commit when the library changed (~1–3 min typical).
-    setDropboxSyncStatus(t("dropboxSyncWaitingDeploy"));
-    for (let i = 0; i < 45; i++) {
-      await new Promise((r) => setTimeout(r, 4000));
-      const fp = await fetchLibraryFingerprint();
-      if (fp && fingerprintBefore && fp !== fingerprintBefore) {
-        setDropboxSyncStatus(t("dropboxSyncUpdateReady"));
-        examplesCatalog = null;
-        await applyAppUpdate({});
-        return;
-      }
-    }
-    // No new fingerprint published — library was already current (or Pages lag).
-    setDropboxSyncStatus(t("dropboxSyncUnchanged"));
-    examplesCatalog = null;
-  } catch (err) {
-    setDropboxSyncStatus(err?.message || String(err), true);
-  } finally {
-    dropboxSyncBusy = false;
-    if (els.dropboxSyncBtn) els.dropboxSyncBtn.disabled = false;
-  }
 }
 
 async function applyPackToPlayer(pack, { remoteSha = null, clearUndoStack = true } = {}) {
@@ -2009,16 +1889,6 @@ els.syncSettingsToggle?.addEventListener("click", () => {
 
 els.syncSettingsSave?.addEventListener("click", () => {
   void readSyncSettingsFromForm().then(() => setStatus("Sync settings saved on this device."));
-});
-
-els.librarySettingsSave?.addEventListener("click", () => {
-  void readLibrarySettingsFromForm().then(() =>
-    setDropboxSyncStatus(t("librarySettingsSaved")),
-  );
-});
-
-els.dropboxSyncBtn?.addEventListener("click", () => {
-  void runDropboxScoreSync();
 });
 
 els.syncExportBtn?.addEventListener("click", async () => {

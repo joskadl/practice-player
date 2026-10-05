@@ -1,18 +1,13 @@
 # Dropbox score library
 
-Use a **Dropbox shared folder** of `.mscz` files as the source of truth. The Practice Player does **not** convert in the browser; a GitHub Action fetches the folder, converts with MuseScore CLI, regenerates `examples/manifest.json`, commits, and GitHub Pages redeploys.
+Use a **Dropbox shared folder** of `.mscz` files as the source of truth for the built-in **Examples** list. The Practice Player does **not** convert in the browser and has **no in-app Dropbox sync UI**. Updates are done from GitHub Actions (or locally), then Pages redeploys.
 
-## Secrets (keep the folder URL off the public site)
+## Secrets
 
 | Secret | Needed? |
 |--------|---------|
-| `DROPBOX_EXAMPLES_URL` (GitHub Actions **secret**) | **Yes** — the folder share link (`https://www.dropbox.com/scl/fo/…` or `/sh/…`). Stored only in the repo’s Actions secrets. Not written into `examples/.dropbox-sync.json`, not accepted as a workflow input, not shown in the app UI. |
+| `DROPBOX_EXAMPLES_URL` (GitHub Actions **secret**) | **Yes** — folder share link (`https://www.dropbox.com/scl/fo/…` or `/sh/…`). Not published in the site or `examples/.dropbox-sync.json`. |
 | Dropbox API token | **No** — the workflow downloads the folder ZIP (`?dl=1`). |
-| GitHub PAT (maintainers only) | **Yes** (device-local) — Actions: Read and write so the app can start/poll the sync workflow. |
-
-Do **not** store the folder URL as a repository *variable* (variables are easier to read). Prefer **Settings → Secrets and variables → Actions → Secrets**.
-
-Anyone who already has the share link can still open the Dropbox folder; this only stops the Practice Player site/repo from publishing that link. Converted scores on Pages remain public by design.
 
 ## Dropbox folder layout
 
@@ -23,26 +18,21 @@ My choir scores/          ← share this folder (view)
   setlist.json            ← optional order only: ["stille-nacht.mscz", …]
 ```
 
-Titles and other metadata come from the scores (MusicXML `work-title` after conversion / MuseScore project properties). No hand-maintained `catalog.json`.
+Titles come from the scores after MuseScore → MusicXML conversion.
 
-## App button: Sync scores from Dropbox
+## Sync / deploy (maintainers)
 
-1. Ensure `DROPBOX_EXAMPLES_URL` is set as an Actions secret on the repo.
-2. Open **Score library (Dropbox)** → GitHub owner/repo/`practice-player`, branch `main`, and PAT.
-3. **Save settings**, then **Sync scores from Dropbox**.
+1. Ensure `DROPBOX_EXAMPLES_URL` is set under **Settings → Secrets and variables → Actions**.
+2. The workflow runs **every 15 minutes** on a schedule (and can still be started manually: **Actions → Sync Dropbox examples → Run workflow**).
+3. If the folder fingerprint changed, the job converts `.mscz` → `.musicxml`, updates the catalog, bumps the service-worker cache id, commits, and deploys Pages. Unchanged libraries exit early after the fetch/fingerprint check.
 
-The button:
+You can keep the same app **version** (`version.json` / tag). The sync workflow still bumps `sw.js` `CACHE` when examples change so installed clients pick up new MusicXML. A plain **Deploy GitHub Pages** re-run of an unchanged commit does **not** refresh example content by itself — run **Sync Dropbox examples** (or push new example files) when the library changes.
 
-- Does not send the Dropbox URL from the browser (secret only).
-- Refuses to start a second run while one is already queued/in progress (joins the existing run instead).
-- Waits for the workflow, then for Pages to publish a new `examples/.dropbox-sync.json` fingerprint.
-- Reloads the app when new scores are live; reports “already up to date” if Dropbox matched the repo.
+Converted scores on Pages remain public; only the Dropbox share URL stays secret.
 
-## Manual / CI
+## Local (optional)
 
-- Actions → **Sync Dropbox examples** → Run workflow (uses the secret).
-
-Local (with MuseScore installed; pass the URL only on your machine):
+With MuseScore installed:
 
 ```bash
 npm run examples:fetch-dropbox -- "https://www.dropbox.com/scl/fo/…?dl=0"
