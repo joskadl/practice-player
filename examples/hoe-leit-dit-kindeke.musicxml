@@ -2,7 +2,7 @@
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="4.0">
   <work>
-    <work-title>(221) HOE LEIT DIT KINDEKE</work-title>
+    <work-title>Hoe Leit dit Kindeke</work-title>
     </work>
   <identification>
     <creator type="composer">oud Vlaams traditioneel</creator>
@@ -73,7 +73,7 @@
     </defaults>
   <credit page="1">
     <credit-type>title</credit-type>
-    <credit-words default-x="595.41" default-y="1626.58" justify="center" valign="top" font-size="24">HOE LEIT DIT KINDEKE</credit-words>
+    <credit-words default-x="595.41" default-y="1626.58" justify="center" valign="top" font-size="24">Hoe Leit dit Kindeke</credit-words>
     </credit>
   <credit page="1">
     <credit-type>composer</credit-type>

@@ -1,6 +1,6 @@
 {
-  "fetchedAt": "2026-10-05T11:21:46.731Z",
-  "fingerprint": "31145af1163d2bf98cee8353fe49ecd24f65388f52ffe19a9f1d601e85c72bd2",
+  "fetchedAt": "2026-10-05T12:01:21.145Z",
+  "fingerprint": "2886e9637d1d00117cdd9cf400ef3bf625704adf60c669f8bbb43136841782fb",
   "files": [
     {
       "name": "blue-christmas-for-barbershopers.mscz",
@@ -29,8 +29,8 @@
     },
     {
       "name": "hoe-leit-dit-kindeke.mscz",
-      "bytes": 77132,
-      "sha256": "524b4d67901fdba2c4f89761ca8ab1c3ddb87c80f061d461aaf5059a51d8bc1d"
+      "bytes": 77001,
+      "sha256": "af04c450ae1bd03e31a5027836bc45d8c039c900ccb7f242e855091ddbf89aed"
     },
     {
       "name": "please-come-home-for-christmas.mscz",
