@@ -191,24 +191,41 @@ describe("expandStaffBraceFromSeeds", () => {
     assert.equal(band.bottom, items[2].bottom);
   });
 
-  it("selectStaffBraceWindow prefers the tight brace over one that crosses a system gap", () => {
+  it("selectStaffBraceWindow expands upward from a lone bass seed", () => {
     const staffH = 20;
-    const within = 40;
-    const between = 120;
-    let y = 0;
     /** @type {{top:number, bottom:number}[]} */
-    const items = [];
-    for (let i = 0; i < 4; i++) {
-      items.push({ top: y, bottom: y + staffH });
-      y += staffH + within;
-    }
-    y += between - within;
-    for (let i = 0; i < 4; i++) {
-      items.push({ top: y, bottom: y + staffH });
-      y += staffH + within;
-    }
-    // Seed on bass of first system — windows [0,3] vs [1,4]…; pick [0,3].
+    const items = [
+      { top: 0, bottom: staffH },
+      { top: 50, bottom: 50 + staffH },
+      { top: 100, bottom: 100 + staffH },
+      { top: 280, bottom: 280 + staffH },
+      { top: 420, bottom: 420 + staffH },
+      { top: 470, bottom: 470 + staffH },
+      { top: 520, bottom: 520 + staffH },
+      { top: 700, bottom: 700 + staffH },
+    ];
     const win = selectStaffBraceWindow(items, [3], 4);
     assert.deepEqual(win, { lo: 0, hi: 3 });
+  });
+
+  it("spans full SATB when only the bass is seeded and lyric gaps are uneven", () => {
+    // Hoe Leit-style: tight S–A–T, then a large lyric block before bass.
+    const staffH = 20;
+    /** @type {{g:{id:number}, top:number, bottom:number}[]} */
+    const items = [
+      { g: { id: 0 }, top: 0, bottom: staffH },
+      { g: { id: 1 }, top: 50, bottom: 50 + staffH },
+      { g: { id: 2 }, top: 100, bottom: 100 + staffH },
+      { g: { id: 3 }, top: 280, bottom: 280 + staffH }, // big lyric gap above bass
+      { g: { id: 4 }, top: 420, bottom: 420 + staffH },
+      { g: { id: 5 }, top: 470, bottom: 470 + staffH },
+      { g: { id: 6 }, top: 520, bottom: 520 + staffH },
+      { g: { id: 7 }, top: 700, bottom: 700 + staffH },
+    ];
+    const band = expandStaffBraceFromSeeds(items, new Set([items[3].g]), 4);
+    assert.ok(band);
+    assert.equal(band.staffCount, 4);
+    assert.equal(band.top, items[0].top);
+    assert.equal(band.bottom, items[3].bottom);
   });
 });

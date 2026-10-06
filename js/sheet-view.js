@@ -149,10 +149,9 @@ export function staffBreakGap(items) {
 
 /**
  * Choose a contiguous window of ``maxStaves`` staff bands that contains the
- * seed staffs. Among candidates, prefer the window with the smallest max
- * internal gap (avoids swallowing an inter-system break). Height is then
- * top-of-first → bottom-of-last five-line band — independent of which voices
- * are sounding in the cluster.
+ * seed staffs. Uses gap clustering first; when multi-verse lyrics over-split a
+ * brace (bass alone in its own cluster), merge neighboring clusters until the
+ * braced stave count is reached. Sounding-note seeds only locate the system.
  * @param {{top:number, bottom:number, g?: Element}[]} items sorted by top
  * @param {number[]} seedIdx indices into ``items``
  * @param {number} maxStaves
@@ -166,42 +165,72 @@ export function selectStaffBraceWindow(items, seedIdx, maxStaves) {
   const lo0 = Math.min(...seedIdx);
   const hi0 = Math.max(...seedIdx);
 
-  if (hi0 - lo0 + 1 >= need) {
-    // Seeds already span a full brace (or more) — take a ``need``-wide window
-    // centered on the seed span.
-    const mid = (lo0 + hi0) / 2;
-    let lo = Math.round(mid - (need - 1) / 2);
-    lo = Math.max(0, Math.min(lo, n - need));
-    return { lo, hi: lo + need - 1 };
+  const clusters = clusterStaffBandIndices(items);
+  let cIdx = clusters.findIndex((c) => c.some((i) => i >= lo0 && i <= hi0));
+  if (cIdx < 0) cIdx = 0;
+
+  let lo = clusters[cIdx][0];
+  let hi = clusters[cIdx][clusters[cIdx].length - 1];
+
+  // Over-split brace (lyric gap looked like a system break): merge neighbors
+  // until we have ``need`` staves. Bottom seeds (bass-only onsets) must expand
+  // upward into SAT/A/T even when the lyric gap above bass is wider than the
+  // gap to the next system below.
+  while (hi - lo + 1 < need) {
+    const gapUp = lo > 0 ? items[lo].top - items[lo - 1].bottom : Infinity;
+    const gapDown = hi < n - 1 ? items[hi + 1].top - items[hi].bottom : Infinity;
+    if (!Number.isFinite(gapUp) && !Number.isFinite(gapDown)) break;
+
+    const seedAtBottom = hi0 >= hi - 1;
+    const seedAtTop = lo0 <= lo + 1;
+    let mergeUp;
+    if (seedAtBottom && lo > 0) {
+      mergeUp = true;
+    } else if (seedAtTop && hi < n - 1) {
+      mergeUp = false;
+    } else if (gapUp <= gapDown && lo > 0) {
+      mergeUp = true;
+    } else if (hi < n - 1) {
+      mergeUp = false;
+    } else if (lo > 0) {
+      mergeUp = true;
+    } else {
+      break;
+    }
+
+    if (mergeUp) {
+      const prev = clusters.find((c) => c[c.length - 1] === lo - 1);
+      lo = prev ? prev[0] : lo - 1;
+    } else {
+      const next = clusters.find((c) => c[0] === hi + 1);
+      hi = next ? next[next.length - 1] : hi + 1;
+    }
   }
 
-  // Every window of length ``need`` that contains [lo0, hi0].
-  const loMin = Math.max(0, hi0 - need + 1);
-  const loMax = Math.min(lo0, n - need);
-  if (loMin > loMax) {
-    // Not enough staffs around the seeds — take what we can.
-    const lo = Math.max(0, Math.min(lo0, n - 1));
-    const hi = Math.min(n - 1, Math.max(hi0, lo + need - 1));
-    return { lo: Math.max(0, hi - need + 1), hi };
+  // Under-split / merged too far: keep a ``need``-wide window containing seeds.
+  if (hi - lo + 1 > need) {
+    // Prefer expanding upward from a bottom seed (bass-only onset in SATB).
+    if (hi0 === hi || hi0 - lo0 <= 1) {
+      hi = Math.min(hi, Math.max(hi0, lo0 + need - 1));
+      lo = Math.max(lo, hi - need + 1);
+      if (hi - lo + 1 > need) lo = hi - need + 1;
+      if (lo > lo0) {
+        lo = lo0;
+        hi = Math.min(n - 1, lo + need - 1);
+      }
+    } else {
+      const mid = (lo0 + hi0) / 2;
+      lo = Math.round(mid - (need - 1) / 2);
+      lo = Math.max(lo, 0);
+      lo = Math.min(lo, n - need);
+      // Keep seeds inside.
+      if (lo > lo0) lo = lo0;
+      if (lo + need - 1 < hi0) lo = Math.max(0, hi0 - need + 1);
+      hi = lo + need - 1;
+    }
   }
 
-  let bestLo = loMin;
-  let bestScore = Infinity;
-  const seedMid = (lo0 + hi0) / 2;
-  for (let lo = loMin; lo <= loMax; lo++) {
-    const hi = lo + need - 1;
-    let maxGap = 0;
-    for (let i = lo + 1; i <= hi; i++) {
-      maxGap = Math.max(maxGap, items[i].top - items[i - 1].bottom);
-    }
-    // Heavy weight on max internal gap so a system-break window loses badly.
-    const score = maxGap * 1000 + Math.abs((lo + hi) / 2 - seedMid);
-    if (score < bestScore) {
-      bestScore = score;
-      bestLo = lo;
-    }
-  }
-  return { lo: bestLo, hi: bestLo + need - 1 };
+  return { lo, hi };
 }
 
 /**
@@ -277,6 +306,12 @@ export class SheetView {
     this._lastPlayheadTick = 0;
     /** @type {{left:number, top:number, width:number, height:number}|null} */
     this._lastCursorGeom = null;
+    /**
+     * Cached score-mode brace Y for the current MusicSystem so the bar does not
+     * jump when only a subset of voices has notes.
+     * @type {{sys:object, top:number, bottom:number}|null}
+     */
+    this._braceBandCache = null;
     this.showStaffLines = true;
     /** @type {{ title: string, parts: Map<string,string>, staffLines: number, colors: Map<string,string> }|null} */
     this._pending = null;
@@ -434,6 +469,7 @@ export class SheetView {
     this._cursorIdx = 0;
     this._lastPlayheadTick = 0;
     this._lastCursorGeom = null;
+    this._braceBandCache = null;
     this._pending = null;
     this._svgLayoutBackup = null;
     this.annotMode = null;
@@ -721,6 +757,7 @@ export class SheetView {
     } catch {
       /* ignore */
     }
+    this._braceBandCache = null;
     this.osmd.render();
     this._pruneGhostCursorImages();
     this.applyVoiceVisibility();
@@ -840,6 +877,7 @@ export class SheetView {
     this._lyricPartIndices = donor._lyricPartIndices;
     this._timeline = Array.isArray(donor._timeline) ? donor._timeline.slice() : [];
     this._lastCursorGeom = null;
+    this._braceBandCache = null;
     this._pending = null;
     this._svgLayoutBackup = null;
     this.annotMode = null;
@@ -1300,30 +1338,6 @@ export class SheetView {
     return { g: staffG, top, bottom: top + STAFF_BAND_FALLBACK_H };
   }
 
-  /** @returns {Set<Element>} */
-  _cursorSeedStaffLines() {
-    /** @type {Set<Element>} */
-    const seed = new Set();
-    const cursor = this.osmd?.cursor;
-    if (!cursor) return seed;
-    try {
-      const gnotes =
-        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
-      for (const gn of gnotes) {
-        const src = gn?.sourceNote || gn?.getSourceNote?.();
-        const isRest =
-          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
-        if (isRest) continue;
-        const staffG = (gn?.getSVGGElement?.() || gn?.svggElement)?.closest?.("g.staffline");
-        if (!staffG || !this._isStafflinePainted(staffG)) continue;
-        seed.add(staffG);
-      }
-    } catch {
-      /* ignore */
-    }
-    return seed;
-  }
-
   /** Staffline groups that still participate in layout (not display:none from the packer). */
   _isStafflinePainted(staffG) {
     if (!staffG) return false;
@@ -1484,10 +1498,50 @@ export class SheetView {
   _playheadBraceBand(host, scrollT) {
     if (!this.layers?.staves) return null;
 
-    const seed = this._cursorSeedStaffLines();
-    let items = this._domStaffBandItems(host, scrollT);
+    const sys = this._musicSystemUnderCursor();
+    if (sys && this._braceBandCache?.sys === sys) {
+      return {
+        top: this._braceBandCache.top,
+        bottom: this._braceBandCache.bottom,
+      };
+    }
 
-    // Seeds dropped by dedupe still need a band row for anchoring.
+    const visible = typeof this._visibleInstrumentOrder === "function"
+      ? this._visibleInstrumentOrder()
+      : [];
+    const systemN =
+      this._stafflineCountInSystem(sys)
+      || this._osmdSystemStaffCount()
+      || visible.length
+      || this.instrumentVoices?.length
+      || 4;
+    const maxStaves = Math.max(1, systemN);
+
+    // MusicSystem → DOM mapping is incomplete in some OSMD builds (often only the
+    // sounding staff resolves). Only trust it when we got every stave in the brace.
+    const mapped = sys ? this._domStafflinesForMusicSystem(sys) : [];
+    if (mapped.length >= maxStaves) {
+      let top = null;
+      let bottom = null;
+      for (const g of mapped) {
+        const band = this._staffBandItem(g, host, scrollT);
+        if (!band) continue;
+        top = top == null ? band.top : Math.min(top, band.top);
+        bottom = bottom == null ? band.bottom : Math.max(bottom, band.bottom);
+      }
+      if (top != null && bottom != null && bottom > top) {
+        const capped = this._capPlayheadBand(top, bottom, mapped.length);
+        if (sys) this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom };
+        return capped;
+      }
+    }
+
+    // Authoritative path: all painted five-line bands on the page, then take a
+    // fixed window of ``maxStaves`` containing the cursor staff (rests OK).
+    // Sounding-note seeds only locate the system — the window always spans the
+    // full brace, so bass-only onsets do not shrink the bar to one staff.
+    const seed = this._cursorSeedStaffLines({ pitchedOnly: false });
+    let items = this._domStaffBandItems(host, scrollT);
     if (seed.size) {
       const have = new Set(items.map((it) => it.g));
       for (const g of seed) {
@@ -1500,18 +1554,187 @@ export class SheetView {
       }
       items.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
     }
+    const expanded = expandStaffBraceFromSeeds(items, seed, maxStaves);
+    if (!expanded) return null;
+    const capped = this._capPlayheadBand(expanded.top, expanded.bottom, expanded.staffCount);
+    if (sys) this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom };
+    return capped;
+  }
 
-    const visible = typeof this._visibleInstrumentOrder === "function"
-      ? this._visibleInstrumentOrder()
-      : [];
-    const systemN = this._osmdSystemStaffCount();
-    const visibleN = visible.length || this.instrumentVoices?.length || 4;
-    // Prefer this MusicSystem's stave count (3 vs 4 systems) so we don't steal
-    // from the next brace; fall back to visible parts when OSMD has no system.
-    const maxStaves = Math.max(1, systemN || visibleN);
-    const band = expandStaffBraceFromSeeds(items, seed, maxStaves);
-    if (!band) return null;
-    return this._capPlayheadBand(band.top, band.bottom, band.staffCount);
+  /**
+   * OSMD MusicSystem for whatever is under the cursor (notes or rests).
+   * @returns {object|null}
+   */
+  _musicSystemUnderCursor() {
+    const cursor = this.osmd?.cursor;
+    if (!cursor) return null;
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const sys = this._musicSystemFromGraphicalNote(gn);
+        if (sys) return sys;
+      }
+      // Iterator voice entries (may be rests-only).
+      const it = cursor.iterator;
+      const entries =
+        it?.CurrentVoiceEntries ||
+        it?.currentVoiceEntries ||
+        (typeof cursor.VoicesUnderCursor === "function" ? cursor.VoicesUnderCursor() : null);
+      if (Array.isArray(entries)) {
+        for (const ve of entries) {
+          const notes = ve?.Notes || ve?.notes || [];
+          for (const note of notes) {
+            const sys = this._musicSystemFromGraphicalNote(note);
+            if (sys) return sys;
+          }
+          const gve = ve?.parentVoiceEntry || ve;
+          const measure =
+            gve?.parentStaffEntry?.parentMeasure ||
+            gve?.ParentStaffEntry?.ParentMeasure ||
+            ve?.ParentStaffEntry?.ParentMeasure;
+          const staffLine = measure?.ParentStaffLine || measure?.parentStaffLine;
+          const sys = staffLine?.ParentMusicSystem || staffLine?.parentMusicSystem;
+          if (sys) return sys;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  /**
+   * @param {object} gn
+   * @returns {object|null}
+   */
+  _musicSystemFromGraphicalNote(gn) {
+    if (!gn) return null;
+    const staffLineCandidates = [
+      gn?.ParentStaffLine,
+      gn?.parentStaffLine,
+      gn?.staffEntry?.ParentStaffLine,
+      gn?.staffEntry?.parentStaffLine,
+      gn?.ParentStaffEntry?.ParentStaffLine,
+      gn?.ParentStaffEntry?.parentStaffLine,
+      gn?.parentVoiceEntry?.ParentStaffEntry?.ParentStaffLine,
+      gn?.parentVoiceEntry?.parentStaffEntry?.ParentStaffLine,
+    ];
+    for (const sl of staffLineCandidates) {
+      if (!sl) continue;
+      const sys = sl.ParentMusicSystem || sl.parentMusicSystem;
+      if (sys) return sys;
+    }
+    return null;
+  }
+
+  /**
+   * @param {object|null} sys
+   * @returns {number}
+   */
+  _stafflineCountInSystem(sys) {
+    const lines = sys?.StaffLines || sys?.staffLines;
+    return Array.isArray(lines) ? lines.length : 0;
+  }
+
+  /**
+   * DOM ``g.staffline`` nodes for every staff in an OSMD MusicSystem.
+   * @param {object} sys
+   * @returns {Element[]}
+   */
+  _domStafflinesForMusicSystem(sys) {
+    const lines = [...(sys?.StaffLines || sys?.staffLines || [])].filter(Boolean);
+    /** @type {Element[]} */
+    const out = [];
+    /** @type {Set<Element>} */
+    const seen = new Set();
+    for (const sl of lines) {
+      const candidates = [
+        sl?.getSVGGElement?.(),
+        sl?.svggElement,
+        sl?.getSVGElement?.(),
+        sl?.stencil?.getSVGGElement?.(),
+        sl?.graphicalStaffLine?.getSVGGElement?.(),
+        sl?.graphicalStaffLine?.svggElement,
+      ];
+      for (const el of candidates) {
+        const g = el?.closest?.("g.staffline") || (el?.classList?.contains?.("staffline") ? el : null);
+        if (g && this._isStafflinePainted(g) && !seen.has(g)) {
+          seen.add(g);
+          out.push(g);
+          break;
+        }
+      }
+    }
+    if (out.length >= 2) return out;
+
+    // Fallback: map each OSMD staff AbsolutePosition.y to the nearest DOM band.
+    const all = this._domStaffBandItems(
+      this.container.getBoundingClientRect(),
+      this.container.scrollTop,
+    );
+    if (!all.length || !lines.length) return out;
+
+    const zoom = this.osmd?.zoom || 1;
+    const k = 10 * zoom;
+    /** @type {number[]} */
+    const osmdYs = [];
+    for (const sl of lines) {
+      const ps = sl.PositionAndShape || sl.positionAndShape;
+      const abs = ps?.AbsolutePosition || ps?.absolutePosition;
+      if (abs && typeof abs.y === "number") osmdYs.push(abs.y);
+    }
+    if (osmdYs.length < 2) return out;
+
+    // Calibrate OSMD units → content Y using any known seed staff.
+    const seed = this._cursorSeedStaffLines({ pitchedOnly: false });
+    let offset = null;
+    for (const sg of seed) {
+      const match = all.find((it) => it.g === sg);
+      if (!match) continue;
+      // Pair with nearest osmdY by order in system (use mid of seed band).
+      const mid = (match.top + match.bottom) / 2;
+      let bestYi = 0;
+      let bestD = Infinity;
+      for (let i = 0; i < osmdYs.length; i++) {
+        const approx = k * osmdYs[i];
+        const d = Math.abs(approx - mid);
+        if (d < bestD) {
+          bestD = d;
+          bestYi = i;
+        }
+      }
+      offset = mid - k * osmdYs[bestYi];
+      break;
+    }
+    if (offset == null && all.length) {
+      offset = all[0].top - k * osmdYs[0];
+    }
+    if (offset == null) return out;
+
+    /** @type {Element[]} */
+    const mapped = [];
+    /** @type {Set<Element>} */
+    const used = new Set();
+    for (const y of osmdYs) {
+      const target = k * y + offset;
+      let best = null;
+      let bestD = Infinity;
+      for (const it of all) {
+        if (used.has(it.g)) continue;
+        const mid = (it.top + it.bottom) / 2;
+        const d = Math.abs(mid - target);
+        if (d < bestD) {
+          bestD = d;
+          best = it;
+        }
+      }
+      if (best && bestD < 80) {
+        used.add(best.g);
+        mapped.push(best.g);
+      }
+    }
+    return mapped.length >= out.length ? mapped : out;
   }
 
   /**
@@ -1520,33 +1743,37 @@ export class SheetView {
    * @returns {number}
    */
   _osmdSystemStaffCount() {
+    return this._stafflineCountInSystem(this._musicSystemUnderCursor());
+  }
+
+  /**
+   * ``g.staffline`` groups under the cursor. Include rests when locating a brace
+   * system so a bass-only onset still anchors the full SATB block.
+   * @param {{pitchedOnly?: boolean}} [opts]
+   * @returns {Set<Element>}
+   */
+  _cursorSeedStaffLines(opts = {}) {
+    const pitchedOnly = opts.pitchedOnly !== false;
+    /** @type {Set<Element>} */
+    const seed = new Set();
     const cursor = this.osmd?.cursor;
-    if (!cursor) return 0;
+    if (!cursor) return seed;
     try {
       const gnotes =
         typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
       for (const gn of gnotes) {
-        const staffLineCandidates = [
-          gn?.ParentStaffLine,
-          gn?.parentStaffLine,
-          gn?.staffEntry?.ParentStaffLine,
-          gn?.staffEntry?.parentStaffLine,
-          gn?.ParentStaffEntry?.ParentStaffLine,
-          gn?.ParentStaffEntry?.parentStaffLine,
-          gn?.parentVoiceEntry?.ParentStaffEntry?.ParentStaffLine,
-          gn?.parentVoiceEntry?.parentStaffEntry?.ParentStaffLine,
-        ];
-        for (const sl of staffLineCandidates) {
-          if (!sl) continue;
-          const sys = sl.ParentMusicSystem || sl.parentMusicSystem;
-          const lines = sys?.StaffLines || sys?.staffLines;
-          if (lines?.length) return lines.length;
-        }
+        const src = gn?.sourceNote || gn?.getSourceNote?.();
+        const isRest =
+          src && typeof src.isRest === "function" ? src.isRest() : !!src?.isRest;
+        if (pitchedOnly && isRest) continue;
+        const staffG = (gn?.getSVGGElement?.() || gn?.svggElement)?.closest?.("g.staffline");
+        if (!staffG || !this._isStafflinePainted(staffG)) continue;
+        seed.add(staffG);
       }
     } catch {
       /* ignore */
     }
-    return 0;
+    return seed;
   }
 
   /**
@@ -1702,18 +1929,26 @@ export class SheetView {
 
     if (left == null) return null;
 
+    // Score mode: Y from the braced MusicSystem only — never OSMD's note-tied cursor height.
     const brace = this._playheadBraceBand(host, scrollT);
-    const osmd = brace ? null : this._osmdCursorBand();
-    const top = brace?.top ?? osmd?.top ?? null;
-    const bottom = brace?.bottom ?? osmd?.bottom ?? null;
-    if (top == null || bottom == null || !(bottom > top)) return null;
-
-    return {
-      left,
-      top: Math.max(0, top),
-      bottom,
-      width,
-    };
+    if (brace) {
+      return {
+        left,
+        top: Math.max(0, brace.top),
+        bottom: brace.bottom,
+        width,
+      };
+    }
+    // Keep the previous brace Y if we briefly cannot resolve the system (e.g. rest-only).
+    if (this._lastCursorGeom && this.layers?.staves !== false) {
+      return {
+        left,
+        top: this._lastCursorGeom.top,
+        bottom: this._lastCursorGeom.top + this._lastCursorGeom.height,
+        width,
+      };
+    }
+    return null;
   }
 
   /**
