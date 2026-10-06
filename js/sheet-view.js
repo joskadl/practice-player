@@ -312,9 +312,9 @@ export class SheetView {
     /** @type {{left:number, top:number, width:number, height:number}|null} */
     this._lastCursorGeom = null;
     /**
-     * Cached score-mode brace Y for the current MusicSystem so the bar does not
-     * jump when only a subset of voices has notes.
-     * @type {{sys:object, top:number, bottom:number, anchorMid:number}|null}
+     * Cached score-mode brace Y for the current MusicSystem (one sheet line).
+     * Re-measured only when the cursor moves to a different system.
+     * @type {{sys:object, top:number, bottom:number}|null}
      */
     this._braceBandCache = null;
     this.showStaffLines = true;
@@ -1495,8 +1495,9 @@ export class SheetView {
   }
 
   /**
-   * Vertical span of the braced system at the cursor: always top staff → bottom
-   * staff of that MusicSystem (independent of which voices are sounding).
+   * Vertical span of the braced system at the cursor: top engraved line of the
+   * first staff → bottom engraved line of the last staff in that MusicSystem.
+   * Measured once per sheet line and cached until the cursor reaches another system.
    * Lyrics-only mode uses ``_playheadTextBand`` instead (one packed text row).
    * @returns {{top:number, bottom:number}|null}
    */
@@ -1504,67 +1505,130 @@ export class SheetView {
     if (!this.layers?.staves) return null;
 
     const sys = this._musicSystemUnderCursor();
-    const seed = this._cursorSeedStaffLines({ pitchedOnly: false });
-    let anchorMid = null;
-    if (seed.size) {
-      let midSum = 0;
-      let midN = 0;
-      for (const g of seed) {
-        const band = this._staffBandItem(g, host, scrollT);
-        if (!band) continue;
-        midSum += (band.top + band.bottom) / 2;
-        midN += 1;
-      }
-      if (midN) anchorMid = midSum / midN;
-    }
-    if (
-      sys &&
-      anchorMid != null &&
-      this._braceBandCache?.sys === sys &&
-      Math.abs(this._braceBandCache.anchorMid - anchorMid) < 80
-    ) {
+    if (sys && this._braceBandCache?.sys === sys) {
       return {
         top: this._braceBandCache.top,
         bottom: this._braceBandCache.bottom,
       };
     }
 
-    const visible = typeof this._visibleInstrumentOrder === "function"
-      ? this._visibleInstrumentOrder()
-      : [];
-    const systemN =
-      this._stafflineCountInSystem(sys)
-      || this._osmdSystemStaffCount()
-      || visible.length
-      || this.instrumentVoices?.length
-      || 4;
-    const maxStaves = Math.max(1, systemN);
-
-    // DOM five-line bands on the page, then a fixed ``maxStaves`` window around
-    // the cursor staff (rests OK). Sounding-note seeds only locate the system —
-    // the window always spans the full brace, so bass-only onsets do not shrink
-    // the bar to one staff. OSMD MusicSystem→DOM Y mapping is not used here:
-    // it mis-anchors systems after the first line when scroll/layout shifts.
-    let items = this._domStaffBandItems(host, scrollT);
-    if (seed.size) {
-      const have = new Set(items.map((it) => it.g));
-      for (const g of seed) {
-        if (have.has(g)) continue;
-        const band = this._staffBandItem(g, host, scrollT);
-        if (band) {
-          items.push(band);
-          have.add(g);
-        }
-      }
-      items.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
-    }
-    const expanded = expandStaffBraceFromSeeds(items, seed, maxStaves);
-    if (!expanded) return null;
-    const capped = this._capPlayheadBand(expanded.top, expanded.bottom, expanded.staffCount);
-    if (sys && anchorMid != null) {
-      this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom, anchorMid };
+    const measured = this._measureMusicSystemBraceBand(sys, host, scrollT);
+    if (!measured) return null;
+    const capped = this._capPlayheadBand(measured.top, measured.bottom, measured.staffCount);
+    if (sys) {
+      this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom };
     }
     return capped;
+  }
+
+  /**
+   * Top engraved line of the first staff → bottom engraved line of the last staff
+   * in one OSMD MusicSystem (the braced block on a sheet-music line).
+   * @param {object|null} sys
+   * @param {DOMRect} host
+   * @param {number} scrollT
+   * @returns {{top:number, bottom:number, staffCount:number}|null}
+   */
+  _measureMusicSystemBraceBand(sys, host, scrollT) {
+    if (!sys) return null;
+    const lines = [...(sys.StaffLines || sys.staffLines || [])].filter(Boolean);
+    const staffCount = Math.max(1, lines.length);
+
+    // 1. DOM five-line bands for each staff in this system only (never page-wide).
+    const staffGs = this._domStafflinesForMusicSystem(sys);
+    if (staffGs.length >= staffCount) {
+      let top = null;
+      let bottom = null;
+      let counted = 0;
+      for (const g of staffGs) {
+        const band = this._staffBandItem(g, host, scrollT);
+        if (!band) continue;
+        top = top == null ? band.top : Math.min(top, band.top);
+        bottom = bottom == null ? band.bottom : Math.max(bottom, band.bottom);
+        counted += 1;
+      }
+      if (counted >= staffCount && top != null && bottom != null && bottom > top) {
+        return { top, bottom, staffCount };
+      }
+    }
+
+    // 2. OSMD engraved Y for every StaffLine in this system.
+    return this._osmdSystemStaffBand(sys, host, scrollT);
+  }
+
+  /**
+   * Map OSMD staff-line units to content Y using a note or staff under the cursor.
+   * @param {DOMRect} host
+   * @param {number} scrollT
+   * @returns {{k:number, offset:number}|null}
+   */
+  _osmdYCalibration(host, scrollT) {
+    const zoom = this.osmd?.zoom || 1;
+    const k = 10 * zoom;
+    const cursor = this.osmd?.cursor;
+    if (!cursor) return null;
+    try {
+      const gnotes =
+        typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
+      for (const gn of gnotes) {
+        const ps = gn?.PositionAndShape || gn?.positionAndShape;
+        const absY = ps?.AbsolutePosition?.y ?? ps?.absolutePosition?.y;
+        const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
+        if (typeof absY !== "number" || !svgEl) continue;
+        const r = svgEl.getBoundingClientRect();
+        if (!(r.height > 0 || r.width > 0)) continue;
+        const domY = r.top - host.top + scrollT;
+        return { k, offset: domY - k * absY };
+      }
+      const sys = this._musicSystemUnderCursor();
+      const slines = [...(sys?.StaffLines || sys?.staffLines || [])].filter(Boolean);
+      const staffGs = sys ? this._domStafflinesForMusicSystem(sys) : [];
+      for (let i = 0; i < staffGs.length && i < slines.length; i++) {
+        const band = this._staffBandItem(staffGs[i], host, scrollT);
+        const ps = slines[i]?.PositionAndShape || slines[i]?.positionAndShape;
+        const absY = ps?.AbsolutePosition?.y ?? ps?.absolutePosition?.y;
+        if (!band || typeof absY !== "number") continue;
+        const mid = (band.top + band.bottom) / 2;
+        return { k, offset: mid - k * absY };
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  /**
+   * Staff-line span from OSMD MusicSystem StaffLines (fallback when DOM mapping fails).
+   * @param {object} sys
+   * @param {DOMRect} host
+   * @param {number} scrollT
+   * @returns {{top:number, bottom:number, staffCount:number}|null}
+   */
+  _osmdSystemStaffBand(sys, host, scrollT) {
+    const lines = [...(sys?.StaffLines || sys?.staffLines || [])].filter(Boolean);
+    if (!lines.length) return null;
+    const cal = this._osmdYCalibration(host, scrollT);
+    if (!cal) return null;
+    const { k, offset } = cal;
+    const rules = this.osmd?.EngravingRules || this.osmd?.rules;
+    const dist = Number(rules?.BetweenStaffLinesDistance);
+    const staffHeightUnits = 4 * (Number.isFinite(dist) && dist > 0 ? dist : 1);
+    /** @type {{y:number, top:number, bottom:number}[]} */
+    const bands = [];
+    for (const sl of lines) {
+      const ps = sl.PositionAndShape || sl.positionAndShape;
+      const abs = ps?.AbsolutePosition || ps?.absolutePosition;
+      if (!abs || typeof abs.y !== "number") continue;
+      const top = k * abs.y + offset;
+      const bottom = k * (abs.y + staffHeightUnits) + offset;
+      bands.push({ y: abs.y, top, bottom });
+    }
+    if (!bands.length) return null;
+    bands.sort((a, b) => a.y - b.y);
+    const top = bands[0].top;
+    const bottom = bands[bands.length - 1].bottom;
+    if (!(bottom > top)) return null;
+    return { top, bottom, staffCount: bands.length };
   }
 
   /**
@@ -1672,72 +1736,7 @@ export class SheetView {
         }
       }
     }
-    if (out.length >= 2) return out;
-
-    // Fallback: map each OSMD staff AbsolutePosition.y to the nearest DOM band.
-    const all = this._domStaffBandItems(
-      this.container.getBoundingClientRect(),
-      this.container.scrollTop,
-    );
-    if (!all.length || !lines.length) return out;
-
-    const zoom = this.osmd?.zoom || 1;
-    const k = 10 * zoom;
-    /** @type {number[]} */
-    const osmdYs = [];
-    for (const sl of lines) {
-      const ps = sl.PositionAndShape || sl.positionAndShape;
-      const abs = ps?.AbsolutePosition || ps?.absolutePosition;
-      if (abs && typeof abs.y === "number") osmdYs.push(abs.y);
-    }
-    if (osmdYs.length < 2) return out;
-
-    // Calibrate OSMD units → content Y using any known seed staff.
-    const seed = this._cursorSeedStaffLines({ pitchedOnly: false });
-    let offset = null;
-    for (const sg of seed) {
-      const match = all.find((it) => it.g === sg);
-      if (!match) continue;
-      // Pair with nearest osmdY by order in system (use mid of seed band).
-      const mid = (match.top + match.bottom) / 2;
-      let bestYi = 0;
-      let bestD = Infinity;
-      for (let i = 0; i < osmdYs.length; i++) {
-        const approx = k * osmdYs[i];
-        const d = Math.abs(approx - mid);
-        if (d < bestD) {
-          bestD = d;
-          bestYi = i;
-        }
-      }
-      offset = mid - k * osmdYs[bestYi];
-      break;
-    }
-    if (offset == null) return out;
-
-    /** @type {Element[]} */
-    const mapped = [];
-    /** @type {Set<Element>} */
-    const used = new Set();
-    for (const y of osmdYs) {
-      const target = k * y + offset;
-      let best = null;
-      let bestD = Infinity;
-      for (const it of all) {
-        if (used.has(it.g)) continue;
-        const mid = (it.top + it.bottom) / 2;
-        const d = Math.abs(mid - target);
-        if (d < bestD) {
-          bestD = d;
-          best = it;
-        }
-      }
-      if (best && bestD < 80) {
-        used.add(best.g);
-        mapped.push(best.g);
-      }
-    }
-    return mapped.length >= out.length ? mapped : out;
+    return out;
   }
 
   /**
