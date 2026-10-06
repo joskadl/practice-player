@@ -184,7 +184,12 @@ export function selectStaffBraceWindow(items, seedIdx, maxStaves) {
     const seedAtBottom = hi0 >= hi - 1;
     const seedAtTop = lo0 <= lo + 1;
     let mergeUp;
-    if (seedAtBottom && lo > 0) {
+    // Seeds can straddle lyric-gap clusters — grow toward missing seeds first.
+    if (hi0 > hi && hi < n - 1) {
+      mergeUp = false;
+    } else if (lo0 < lo && lo > 0) {
+      mergeUp = true;
+    } else if (seedAtBottom && lo > 0) {
       mergeUp = true;
     } else if (seedAtTop && hi < n - 1) {
       mergeUp = false;
@@ -309,7 +314,7 @@ export class SheetView {
     /**
      * Cached score-mode brace Y for the current MusicSystem so the bar does not
      * jump when only a subset of voices has notes.
-     * @type {{sys:object, top:number, bottom:number}|null}
+     * @type {{sys:object, top:number, bottom:number, anchorMid:number}|null}
      */
     this._braceBandCache = null;
     this.showStaffLines = true;
@@ -1499,7 +1504,25 @@ export class SheetView {
     if (!this.layers?.staves) return null;
 
     const sys = this._musicSystemUnderCursor();
-    if (sys && this._braceBandCache?.sys === sys) {
+    const seed = this._cursorSeedStaffLines({ pitchedOnly: false });
+    let anchorMid = null;
+    if (seed.size) {
+      let midSum = 0;
+      let midN = 0;
+      for (const g of seed) {
+        const band = this._staffBandItem(g, host, scrollT);
+        if (!band) continue;
+        midSum += (band.top + band.bottom) / 2;
+        midN += 1;
+      }
+      if (midN) anchorMid = midSum / midN;
+    }
+    if (
+      sys &&
+      anchorMid != null &&
+      this._braceBandCache?.sys === sys &&
+      Math.abs(this._braceBandCache.anchorMid - anchorMid) < 80
+    ) {
       return {
         top: this._braceBandCache.top,
         bottom: this._braceBandCache.bottom,
@@ -1517,30 +1540,11 @@ export class SheetView {
       || 4;
     const maxStaves = Math.max(1, systemN);
 
-    // MusicSystem → DOM mapping is incomplete in some OSMD builds (often only the
-    // sounding staff resolves). Only trust it when we got every stave in the brace.
-    const mapped = sys ? this._domStafflinesForMusicSystem(sys) : [];
-    if (mapped.length >= maxStaves) {
-      let top = null;
-      let bottom = null;
-      for (const g of mapped) {
-        const band = this._staffBandItem(g, host, scrollT);
-        if (!band) continue;
-        top = top == null ? band.top : Math.min(top, band.top);
-        bottom = bottom == null ? band.bottom : Math.max(bottom, band.bottom);
-      }
-      if (top != null && bottom != null && bottom > top) {
-        const capped = this._capPlayheadBand(top, bottom, mapped.length);
-        if (sys) this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom };
-        return capped;
-      }
-    }
-
-    // Authoritative path: all painted five-line bands on the page, then take a
-    // fixed window of ``maxStaves`` containing the cursor staff (rests OK).
-    // Sounding-note seeds only locate the system — the window always spans the
-    // full brace, so bass-only onsets do not shrink the bar to one staff.
-    const seed = this._cursorSeedStaffLines({ pitchedOnly: false });
+    // DOM five-line bands on the page, then a fixed ``maxStaves`` window around
+    // the cursor staff (rests OK). Sounding-note seeds only locate the system —
+    // the window always spans the full brace, so bass-only onsets do not shrink
+    // the bar to one staff. OSMD MusicSystem→DOM Y mapping is not used here:
+    // it mis-anchors systems after the first line when scroll/layout shifts.
     let items = this._domStaffBandItems(host, scrollT);
     if (seed.size) {
       const have = new Set(items.map((it) => it.g));
@@ -1557,7 +1561,9 @@ export class SheetView {
     const expanded = expandStaffBraceFromSeeds(items, seed, maxStaves);
     if (!expanded) return null;
     const capped = this._capPlayheadBand(expanded.top, expanded.bottom, expanded.staffCount);
-    if (sys) this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom };
+    if (sys && anchorMid != null) {
+      this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom, anchorMid };
+    }
     return capped;
   }
 
@@ -1706,9 +1712,6 @@ export class SheetView {
       }
       offset = mid - k * osmdYs[bestYi];
       break;
-    }
-    if (offset == null && all.length) {
-      offset = all[0].top - k * osmdYs[0];
     }
     if (offset == null) return out;
 

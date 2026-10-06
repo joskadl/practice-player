@@ -208,6 +208,83 @@ describe("expandStaffBraceFromSeeds", () => {
     assert.deepEqual(win, { lo: 0, hi: 3 });
   });
 
+  it("selectStaffBraceWindow merges down when seeds straddle a lyric gap", () => {
+    const staffH = 20;
+    /** @type {{top:number, bottom:number}[]} */
+    const items = [
+      { top: 400, bottom: 400 + staffH },
+      { top: 450, bottom: 450 + staffH },
+      { top: 500, bottom: 500 + staffH },
+      { top: 680, bottom: 680 + staffH },
+    ];
+    const win = selectStaffBraceWindow(items, [0, 1, 2, 3], 4);
+    assert.deepEqual(win, { lo: 0, hi: 3 });
+  });
+
+  it("second-system bass-only matches the full brace band", () => {
+    const staffH = 20;
+    const within = 30;
+    const betweenSystems = 120;
+    let y = 0;
+    /** @type {{g:{id:number}, top:number, bottom:number}[]} */
+    const items = [];
+    for (let i = 0; i < 4; i++) {
+      items.push({ g: { id: i }, top: y, bottom: y + staffH });
+      y += staffH + within;
+    }
+    y += betweenSystems - within;
+    for (let i = 4; i < 8; i++) {
+      items.push({ g: { id: i }, top: y, bottom: y + staffH });
+      y += staffH + within;
+    }
+
+    const fromAll = expandStaffBraceFromSeeds(
+      items,
+      new Set([items[4].g, items[5].g, items[6].g, items[7].g]),
+      4,
+    );
+    const fromBass = expandStaffBraceFromSeeds(items, new Set([items[7].g]), 4);
+    assert.ok(fromAll && fromBass);
+    assert.equal(fromAll.top, fromBass.top);
+    assert.equal(fromAll.bottom, fromBass.bottom);
+    assert.equal(fromAll.top, items[4].top);
+    assert.equal(fromAll.bottom, items[7].bottom);
+  });
+
+  it("second-system homophonic and bass-only bands match with lyric gaps", () => {
+    const staffH = 20;
+    const within = 30;
+    const betweenSystems = 120;
+    let y = 0;
+    /** @type {{g:{id:number}, top:number, bottom:number}[]} */
+    const items = [];
+    for (let i = 0; i < 4; i++) {
+      items.push({ g: { id: i }, top: y, bottom: y + staffH });
+      y += staffH + within;
+    }
+    y += betweenSystems - within;
+    // Second system: tight S–A–T, large lyric gap, then bass.
+    items.push({ g: { id: 4 }, top: y, bottom: y + staffH });
+    y += 50;
+    items.push({ g: { id: 5 }, top: y, bottom: y + staffH });
+    y += 50;
+    items.push({ g: { id: 6 }, top: y, bottom: y + staffH });
+    y += 180;
+    items.push({ g: { id: 7 }, top: y, bottom: y + staffH });
+
+    const fromAll = expandStaffBraceFromSeeds(
+      items,
+      new Set([items[4].g, items[5].g, items[6].g, items[7].g]),
+      4,
+    );
+    const fromBass = expandStaffBraceFromSeeds(items, new Set([items[7].g]), 4);
+    assert.ok(fromAll && fromBass);
+    assert.equal(fromAll.top, fromBass.top);
+    assert.equal(fromAll.bottom, fromBass.bottom);
+    assert.equal(fromAll.top, items[4].top);
+    assert.equal(fromAll.bottom, items[7].bottom);
+  });
+
   it("spans full SATB when only the bass is seeded and lyric gaps are uneven", () => {
     // Hoe Leit-style: tight S–A–T, then a large lyric block before bass.
     const staffH = 20;
