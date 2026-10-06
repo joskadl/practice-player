@@ -314,9 +314,11 @@ export class SheetView {
     /**
      * Cached score-mode brace Y for the current MusicSystem (one sheet line).
      * Re-measured only when the cursor moves to a different system.
-     * @type {{sys:object, top:number, bottom:number}|null}
+     * @type {{sysKey:number, top:number, bottom:number}|null}
      */
     this._braceBandCache = null;
+    /** OSMD ``cursor.update()`` layout before we override the <img> (content coords). */
+    this._osmdCursorSnap = null;
     this.showStaffLines = true;
     /** @type {{ title: string, parts: Map<string,string>, staffLines: number, colors: Map<string,string> }|null} */
     this._pending = null;
@@ -475,6 +477,7 @@ export class SheetView {
     this._lastPlayheadTick = 0;
     this._lastCursorGeom = null;
     this._braceBandCache = null;
+    this._osmdCursorSnap = null;
     this._pending = null;
     this._svgLayoutBackup = null;
     this.annotMode = null;
@@ -763,6 +766,7 @@ export class SheetView {
       /* ignore */
     }
     this._braceBandCache = null;
+    this._osmdCursorSnap = null;
     this.osmd.render();
     this._pruneGhostCursorImages();
     this.applyVoiceVisibility();
@@ -883,6 +887,7 @@ export class SheetView {
     this._timeline = Array.isArray(donor._timeline) ? donor._timeline.slice() : [];
     this._lastCursorGeom = null;
     this._braceBandCache = null;
+    this._osmdCursorSnap = null;
     this._pending = null;
     this._svgLayoutBackup = null;
     this.annotMode = null;
@@ -1243,6 +1248,7 @@ export class SheetView {
     } catch {
       /* ignore */
     }
+    this._captureOsmdCursorSnap();
     // Drop ghost cursor imgs OSMD may have left behind — never the active one.
     this._pruneGhostCursorImages();
     // Align the bar to the painted noteheads under the cursor (DOM), not OSMD units.
@@ -1253,6 +1259,12 @@ export class SheetView {
     requestAnimationFrame(() => {
       try {
         this._ensureOsmdCursorAttached();
+        try {
+          cursor.update();
+        } catch {
+          /* ignore */
+        }
+        this._captureOsmdCursorSnap();
         this._nudgeCursorToNoteheads();
         this._ensureCursorVisible();
       } catch {
@@ -1505,7 +1517,12 @@ export class SheetView {
     if (!this.layers?.staves) return null;
 
     const sys = this._musicSystemUnderCursor();
-    if (sys && this._braceBandCache?.sys === sys) {
+    const sysKey = sys ? this._musicSystemKey(sys) : null;
+    if (
+      sysKey != null &&
+      this._braceBandCache?.sysKey === sysKey &&
+      this._braceBandContainsCursor(host, scrollT, this._braceBandCache)
+    ) {
       return {
         top: this._braceBandCache.top,
         bottom: this._braceBandCache.bottom,
@@ -1515,10 +1532,39 @@ export class SheetView {
     const measured = this._measureMusicSystemBraceBand(sys, host, scrollT);
     if (!measured) return null;
     const capped = this._capPlayheadBand(measured.top, measured.bottom, measured.staffCount);
-    if (sys) {
-      this._braceBandCache = { sys, top: capped.top, bottom: capped.bottom };
+    if (sysKey != null) {
+      this._braceBandCache = { sysKey, top: capped.top, bottom: capped.bottom };
     }
     return capped;
+  }
+
+  /**
+   * Stable id for a sheet-music line (OSMD MusicSystem vertical anchor).
+   * @param {object} sys
+   * @returns {number|null}
+   */
+  _musicSystemKey(sys) {
+    const lines = sys?.StaffLines || sys?.staffLines;
+    const first = lines?.[0]?.PositionAndShape || lines?.[0]?.positionAndShape;
+    const abs = first?.AbsolutePosition || first?.absolutePosition;
+    const y = abs?.y;
+    return typeof y === "number" && Number.isFinite(y) ? y : null;
+  }
+
+  /**
+   * @param {DOMRect} host
+   * @param {number} scrollT
+   * @param {{top:number, bottom:number}} band
+   */
+  _braceBandContainsCursor(host, scrollT, band) {
+    const seed = this._cursorSeedStaffLines({ pitchedOnly: false });
+    for (const g of seed) {
+      const item = this._staffBandItem(g, host, scrollT);
+      if (!item) continue;
+      const mid = (item.top + item.bottom) / 2;
+      if (mid >= band.top - 48 && mid <= band.bottom + 48) return true;
+    }
+    return false;
   }
 
   /**
@@ -1534,26 +1580,48 @@ export class SheetView {
     const lines = [...(sys.StaffLines || sys.staffLines || [])].filter(Boolean);
     const staffCount = Math.max(1, lines.length);
 
-    // 1. DOM five-line bands for each staff in this system only (never page-wide).
-    const staffGs = this._domStafflinesForMusicSystem(sys);
-    if (staffGs.length >= staffCount) {
-      let top = null;
-      let bottom = null;
-      let counted = 0;
-      for (const g of staffGs) {
-        const band = this._staffBandItem(g, host, scrollT);
-        if (!band) continue;
-        top = top == null ? band.top : Math.min(top, band.top);
-        bottom = bottom == null ? band.bottom : Math.max(bottom, band.bottom);
-        counted += 1;
-      }
-      if (counted >= staffCount && top != null && bottom != null && bottom > top) {
-        return { top, bottom, staffCount };
-      }
+    // 1. DOM five-line band per OSMD StaffLine in this system (never page-wide).
+    let top = null;
+    let bottom = null;
+    let domCount = 0;
+    for (const sl of lines) {
+      const band = this._domBandForStaffLine(sl, host, scrollT);
+      if (!band) continue;
+      top = top == null ? band.top : Math.min(top, band.top);
+      bottom = bottom == null ? band.bottom : Math.max(bottom, band.bottom);
+      domCount += 1;
+    }
+    if (domCount >= staffCount && top != null && bottom != null && bottom > top) {
+      return { top, bottom, staffCount };
     }
 
     // 2. OSMD engraved Y for every StaffLine in this system.
     return this._osmdSystemStaffBand(sys, host, scrollT);
+  }
+
+  /**
+   * @param {object} sl OSMD StaffLine
+   * @param {DOMRect} host
+   * @param {number} scrollT
+   * @returns {{top:number, bottom:number}|null}
+   */
+  _domBandForStaffLine(sl, host, scrollT) {
+    const candidates = [
+      sl?.getSVGGElement?.(),
+      sl?.svggElement,
+      sl?.getSVGElement?.(),
+      sl?.stencil?.getSVGGElement?.(),
+      sl?.graphicalStaffLine?.getSVGGElement?.(),
+      sl?.graphicalStaffLine?.svggElement,
+    ];
+    for (const el of candidates) {
+      const g =
+        el?.closest?.("g.staffline") || (el?.classList?.contains?.("staffline") ? el : null);
+      if (!g || !this._isStafflinePainted(g)) continue;
+      const band = this._staffBandItem(g, host, scrollT);
+      if (band) return band;
+    }
+    return null;
   }
 
   /**
@@ -1571,25 +1639,31 @@ export class SheetView {
       const gnotes =
         typeof cursor.GNotesUnderCursor === "function" ? cursor.GNotesUnderCursor() : [];
       for (const gn of gnotes) {
-        const ps = gn?.PositionAndShape || gn?.positionAndShape;
-        const absY = ps?.AbsolutePosition?.y ?? ps?.absolutePosition?.y;
-        const svgEl = gn?.getSVGGElement?.() || gn?.svggElement;
-        if (typeof absY !== "number" || !svgEl) continue;
-        const r = svgEl.getBoundingClientRect();
-        if (!(r.height > 0 || r.width > 0)) continue;
-        const domY = r.top - host.top + scrollT;
-        return { k, offset: domY - k * absY };
+        const staffLineCandidates = [
+          gn?.ParentStaffLine,
+          gn?.parentStaffLine,
+          gn?.staffEntry?.ParentStaffLine,
+          gn?.staffEntry?.parentStaffLine,
+          gn?.ParentStaffEntry?.ParentStaffLine,
+          gn?.ParentStaffEntry?.parentStaffLine,
+        ];
+        for (const sl of staffLineCandidates) {
+          if (!sl) continue;
+          const ps = sl.PositionAndShape || sl.positionAndShape;
+          const absY = ps?.AbsolutePosition?.y ?? ps?.absolutePosition?.y;
+          const band = this._domBandForStaffLine(sl, host, scrollT);
+          if (typeof absY !== "number" || !band) continue;
+          return { k, offset: band.top - k * absY };
+        }
       }
       const sys = this._musicSystemUnderCursor();
       const slines = [...(sys?.StaffLines || sys?.staffLines || [])].filter(Boolean);
-      const staffGs = sys ? this._domStafflinesForMusicSystem(sys) : [];
-      for (let i = 0; i < staffGs.length && i < slines.length; i++) {
-        const band = this._staffBandItem(staffGs[i], host, scrollT);
-        const ps = slines[i]?.PositionAndShape || slines[i]?.positionAndShape;
+      for (const sl of slines) {
+        const band = this._domBandForStaffLine(sl, host, scrollT);
+        const ps = sl?.PositionAndShape || sl?.positionAndShape;
         const absY = ps?.AbsolutePosition?.y ?? ps?.absolutePosition?.y;
         if (!band || typeof absY !== "number") continue;
-        const mid = (band.top + band.bottom) / 2;
-        return { k, offset: mid - k * absY };
+        return { k, offset: band.top - k * absY };
       }
     } catch {
       /* ignore */
@@ -1809,11 +1883,11 @@ export class SheetView {
     }
     const el = cursor.cursorElement;
     if (!el) return;
-    if (!el.isConnected) {
-      const page =
-        this.container.querySelector('[id^="osmdCanvas"]') || this.container;
-      page.appendChild(el);
+    // Keep the cursor in the scroll container — not inside osmdCanvasPage (offset parent drift).
+    if (!el.isConnected || el.parentElement !== this.container) {
+      this.container.appendChild(el);
     }
+    el.style.position = "absolute";
     // OSMD hide() uses display:none — clear that when we want the bar visible.
     el.style.display = "";
     el.style.visibility = "visible";
@@ -1874,14 +1948,30 @@ export class SheetView {
     };
   }
 
+  /** Snapshot OSMD cursor layout before we override the <img> (content coords). */
+  _captureOsmdCursorSnap() {
+    const el = this.osmd?.cursor?.cursorElement;
+    if (!el) {
+      this._osmdCursorSnap = null;
+      return;
+    }
+    const left = Number.parseFloat(el.style.left);
+    const top = Number.parseFloat(el.style.top);
+    const height = Number(el.height) || Number.parseFloat(el.style.height);
+    this._osmdCursorSnap = {
+      left: Number.isFinite(left) ? left : null,
+      top: Number.isFinite(top) ? top : null,
+      height: Number.isFinite(height) ? height : null,
+    };
+  }
+
   /**
-   * OSMD Standard cursor ``left`` after ``cursor.update()`` (content coords).
+   * OSMD Standard cursor ``left`` from the last ``cursor.update()`` (content coords).
+   * Do not read ``el.style.left`` after we have nudged the bar — it is our override.
    * @returns {number|null}
    */
   _osmdCursorLeft() {
-    const el = this.osmd?.cursor?.cursorElement;
-    if (!el) return null;
-    const left = Number.parseFloat(el.style.left);
+    const left = this._osmdCursorSnap?.left;
     return Number.isFinite(left) ? left : null;
   }
 
