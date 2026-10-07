@@ -1,58 +1,58 @@
 {
   "examples": [
     {
-      "id": "blue-christmas-for-barbershopers",
-      "title": "Blue Christmas",
-      "file": "blue-christmas-for-barbershopers.mscz",
-      "format": "mscz",
-      "description": "From Dropbox score library"
-    },
-    {
-      "id": "entre-le-boeuf-et-lane-gris",
-      "title": "Entre le bœuf et l'âne gris",
-      "file": "entre-le-boeuf-et-lane-gris.mscz",
-      "format": "mscz",
-      "description": "From Dropbox score library"
-    },
-    {
-      "id": "gabriels-message-satb",
-      "title": "Gabriel's Message",
-      "file": "gabriels-message-satb.mscz",
-      "format": "mscz",
-      "description": "From Dropbox score library"
-    },
-    {
-      "id": "gaudete-christus-est-natus",
+      "id": "1.  gaudete-christus-est-natus",
       "title": "Gaudete, Christus est natus",
-      "file": "gaudete-christus-est-natus.mscz",
+      "file": "1.  gaudete-christus-est-natus.mscz",
       "format": "mscz",
       "description": "From Dropbox score library"
     },
     {
-      "id": "gloria-in-excelsis-deo",
-      "title": "Gloria in excelsis Deo",
-      "file": "gloria-in-excelsis-deo.mscz",
-      "format": "mscz",
-      "description": "From Dropbox score library"
-    },
-    {
-      "id": "hoe-leit-dit-kindeke",
-      "title": "Hoe Leit dit Kindeke",
-      "file": "hoe-leit-dit-kindeke.mscz",
-      "format": "mscz",
-      "description": "From Dropbox score library"
-    },
-    {
-      "id": "please-come-home-for-christmas",
-      "title": "Please Come Home for Christmas",
-      "file": "please-come-home-for-christmas.mscz",
-      "format": "mscz",
-      "description": "From Dropbox score library"
-    },
-    {
-      "id": "stille-nacht",
+      "id": "2.  stille-nacht",
       "title": "Stille Nacht",
-      "file": "stille-nacht.mscz",
+      "file": "2.  stille-nacht.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "3. please-come-home-for-christmas",
+      "title": "Please Come Home for Christmas",
+      "file": "3. please-come-home-for-christmas.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "4. blue-christmas-for-barbershopers",
+      "title": "Blue Christmas",
+      "file": "4. blue-christmas-for-barbershopers.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "5. gloria-in-excelsis-deo",
+      "title": "Gloria in excelsis Deo",
+      "file": "5. gloria-in-excelsis-deo.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "6. entre-le-boeuf-et-lane-gris",
+      "title": "Entre le bœuf et l'âne gris",
+      "file": "6. entre-le-boeuf-et-lane-gris.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "7. gabriels-message-satb",
+      "title": "Gabriel's Message",
+      "file": "7. gabriels-message-satb.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
+      "id": "8. hoe-leit-dit-kindeke",
+      "title": "Hoe Leit dit Kindeke",
+      "file": "8. hoe-leit-dit-kindeke.mscz",
       "format": "mscz",
       "description": "From Dropbox score library"
     }
