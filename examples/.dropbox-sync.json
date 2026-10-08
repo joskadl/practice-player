@@ -1,6 +1,6 @@
 {
-  "fetchedAt": "2026-10-07T16:47:13.992Z",
-  "fingerprint": "6d86ea99aa1aa7c4e1ea4bad1e7a381829f58d21ce44bd0c232a95a2fa85e604",
+  "fetchedAt": "2026-10-08T20:49:47.792Z",
+  "fingerprint": "7fb6f0fdbd82f386887000841f91cdaf360ea3170cd39876fa52e5c052156ba8",
   "files": [
     {
       "name": "1.  gaudete-christus-est-natus.mscz",
@@ -41,6 +41,11 @@
       "name": "8. hoe-leit-dit-kindeke.mscz",
       "bytes": 77001,
       "sha256": "af04c450ae1bd03e31a5027836bc45d8c039c900ccb7f242e855091ddbf89aed"
+    },
+    {
+      "name": "Have yourself a merry little christmas.mscz",
+      "bytes": 130279,
+      "sha256": "48a4141bce06ae210a48607b7a70acdd45ff7e7691de0ce80c73b479c525fa6f"
     }
   ]
 }
