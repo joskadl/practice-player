@@ -1,13 +1,6 @@
 {
   "examples": [
     {
-      "id": "1.  gaudete-christus-est-natus",
-      "title": "1.  Gaudete Christus Est Natus",
-      "file": "1.  gaudete-christus-est-natus.mscz",
-      "format": "mscz",
-      "description": "From Dropbox score library"
-    },
-    {
       "id": "10. the-christmas-song",
       "title": "The Christmas Song",
       "file": "10. the-christmas-song.mscz",

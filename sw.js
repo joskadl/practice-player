@@ -6,7 +6,7 @@
  * assets stay cache-first. Precache keeps the last good copy for offline.
  */
 
-const CACHE = "midi-practice-player-v84";
+const CACHE = "midi-practice-player-v85";
 
 const PRECACHE = [
   "./",
@@ -47,7 +47,6 @@ const PRECACHE = [
   "./icons/icon-512.png",
   "./examples/manifest.json",
   // Pre-converted MusicXML (from examples/*.mscz via npm run examples:build)
-  "./examples/1.  gaudete-christus-est-natus.musicxml",
   "./examples/10. the-christmas-song.musicxml",
   "./examples/2.  stille-nacht.musicxml",
   "./examples/3. please-come-home-for-christmas.musicxml",
