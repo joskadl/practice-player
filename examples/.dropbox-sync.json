@@ -1,11 +1,11 @@
 {
-  "fetchedAt": "2026-10-25T07:35:21.050Z",
-  "fingerprint": "035639f8ad488bb5774d991a7c4fb7a50d93f6bb32ee84a77c11df7159728ba2",
+  "fetchedAt": "2026-10-25T14:55:15.765Z",
+  "fingerprint": "1bfd74a44bf89906788c08b1ebf1448fa66ad04a52f318b36b424192bb7c60d9",
   "files": [
     {
       "name": "1.  gaudete-christus-est-natus.mscz",
-      "bytes": 151402,
-      "sha256": "09adc2220f6fe0bdec49dc629fbfa421bd2ab2a63e7a3ab3efb96f619dcfa8aa"
+      "bytes": 78336,
+      "sha256": "2bf1f4b92d164e28baccee3236fcee85793f5a0e0d95a2254ba593e94a7c135d"
     },
     {
       "name": "10. the-christmas-song.mscz",
