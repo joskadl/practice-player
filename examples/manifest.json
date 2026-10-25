@@ -8,6 +8,13 @@
       "description": "From Dropbox score library"
     },
     {
+      "id": "10. the-christmas-song",
+      "title": "The Christmas Song",
+      "file": "10. the-christmas-song.mscz",
+      "format": "mscz",
+      "description": "From Dropbox score library"
+    },
+    {
       "id": "2.  stille-nacht",
       "title": "Stille Nacht",
       "file": "2.  stille-nacht.mscz",
@@ -57,9 +64,9 @@
       "description": "From Dropbox score library"
     },
     {
-      "id": "9. have yourself a merry little christmas",
+      "id": "9. have-yourself-a-merry-little-christmas",
       "title": "Have yourself a merry little christmas",
-      "file": "9. Have yourself a merry little christmas.mscz",
+      "file": "9. have-yourself-a-merry-little-christmas.mscz",
       "format": "mscz",
       "description": "From Dropbox score library"
     }
